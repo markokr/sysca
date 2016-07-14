@@ -287,7 +287,7 @@ class CertInfo:
                             die("Unsupported DistributionPoint: %s", gn)
             elif ext.oid == ExtensionOID.NAME_CONSTRAINTS:
                 self.permit_subtrees = self.extract_gnames(extobj.permitted_subtrees)
-                self.exclude_subtrees = self.extract_gnames(extobj.exclude_subtrees)
+                self.exclude_subtrees = self.extract_gnames(extobj.excluded_subtrees)
             elif ext.oid == ExtensionOID.SUBJECT_KEY_IDENTIFIER:
                 pass
             elif ext.oid == ExtensionOID.AUTHORITY_KEY_IDENTIFIER:
