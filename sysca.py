@@ -99,18 +99,24 @@ if sys.version_info[0] > 2:
 
 
 def as_bytes(s):
+    """Return byte-string.
+    """
     if isinstance(s, unicode):
         return s.encode('utf8')
     return s
 
 
 def as_unicode(s):
+    """Return unicode-string.
+    """
     if isinstance(s, unicode):
         return s
     return s.decode('utf8')
 
 
 def _escape_char(m):
+    """Backslash-escape.
+    """
     c = m.group(0)
     if c in (',', '\\', '/'):
         return '\\' + c
@@ -118,14 +124,19 @@ def _escape_char(m):
 
 
 def dn_escape(s):
+    """DistinguishedName backslash-escape"""
     return re.sub(r'[\\/\x00-\x1F]', _escape_char, s)
 
 
 def list_escape(s):
+    """Escape value for comma-separated list
+    """
     return re.sub(r'[\\,]', _escape_char, s)
 
 
 def _unescape_char(m):
+    """Unescape helper
+    """
     xmap = {',': ',', '/': '/', '\\': '\\', 't': '\t'}
     c = m.group(1)
     if len(c) > 1:
@@ -135,10 +146,14 @@ def _unescape_char(m):
 
 
 def unescape(s):
+    """Remove backslash escapes.
+    """
     return re.sub(r'\\(x[0-9a-fA-F][0-9a-fA-F]|.)', _unescape_char, s)
 
 
 def render_name(name):
+    """Convert DistinguishedName dict to '/'-separated string.
+    """
     res = ['']
     for k, v in name.items():
         v = dn_escape(v)
@@ -148,10 +163,53 @@ def render_name(name):
 
 
 class CertInfo:
+    """Container for certificate fields.
+    """
     def __init__(self, subject=None, alt_names=None, ca=False, path_length=0,
                  usage=None, load=None, ocsp_urls=None, crl_urls=None, issuer_urls=None,
                  ocsp_nocheck=False,
                  permit_subtrees=None, exclude_subtrees=None):
+        """Setup up details.
+
+        Args:
+
+            subject
+                dict if strings.
+
+            alt_names
+                list of gname strings
+
+            ca
+                boolean, isCA
+
+            path_length
+                max depth for CA's
+
+            usage
+                list of keywords (KU_FIELDS, XKU_CODE_TO_OID).
+
+            ocsp_urls
+                list of urls
+
+            crl_urls
+                list of urls
+
+            issuer_urls
+                list of urls
+
+            ocsp_nocheck
+                mark as not to be checked via OCSP
+
+            permit_subtrees
+                list of gnames for permitted subtrees
+
+            exclude_subtrees
+                list of gnames for excluded subtrees
+
+            load
+                object to extract from (cert or cert request)
+
+        """
         self.ca = ca
         self.path_length = path_length
         self.subject = subject and subject.copy() or {}
@@ -171,6 +229,8 @@ class CertInfo:
             self.load_from_existing(load)
 
     def load_from_existing(self, obj):
+        """Load certificate info from existing certificate or certificate request.
+        """
         self.subject = self.extract_name(obj.subject)
 
         for ext in obj.extensions:
@@ -242,6 +302,8 @@ class CertInfo:
         return res
 
     def extract_key_usage(self, ext):
+        """Extract list of tags from KeyUsage extension.
+        """
         res = []
         fields = KU_FIELDS[:]
 
@@ -340,17 +402,25 @@ class CertInfo:
         return gnames
 
     def get_san_gnames(self):
+        """Return SubjectAltNames as GeneralNames
+        """
         return self.load_gnames(self.san)
 
     def get_ocsp_gnames(self):
+        """Return ocsp_urls as GeneralNames
+        """
         urls = ['uri:' + u for u in self.ocsp_urls]
         return self.load_gnames(urls)
 
     def get_issuer_urls_gnames(self):
+        """Return issuer_urls as GeneralNames
+        """
         urls = ['uri:' + u for u in self.issuer_urls]
         return self.load_gnames(urls)
 
     def get_crl_gnames(self):
+        """Return crl_urls as GeneralNames
+        """
         urls = ['uri:' + u for u in self.crl_urls]
         return self.load_gnames(urls)
 
@@ -426,12 +496,16 @@ class CertInfo:
         return builder
 
     def show_list(self, desc, lst):
+        """Print out list field.
+        """
         if not lst:
             return
         val = ', '.join([list_escape(v) for v in lst])
         msg("  %s: %s", desc, val)
 
     def show(self):
+        """Print out details.
+        """
         if self.subject:
             msg('  Subject: %s', render_name(self.subject))
         self.show_list('SAN', self.san)
@@ -563,8 +637,9 @@ def load_cert(fn):
     return crt
 
 
-def load_password(args):
-    fn = args.password_file
+def load_password(fn):
+    """Read password from potentially gpg-encrypted file.
+    """
     if not fn:
         return None
     data = load_gpg_file(fn)
@@ -573,6 +648,8 @@ def load_password(args):
 
 
 def loop_escaped(val, c):
+    """Parse list of strings, separated by c.
+    """
     if not val:
         val = ''
     val = as_unicode(val)
@@ -625,6 +702,8 @@ def same_pubkey(o1, o2):
 
 
 def die(msg, *args):
+    """Print message and exit.
+    """
     if args:
         msg = msg % args
     sys.stderr.write(msg + '\n')
@@ -632,6 +711,8 @@ def die(msg, *args):
 
 
 def msg(msg, *args):
+    """Print message to stderr.
+    """
     if QUIET:
         return
     if args:
@@ -640,6 +721,8 @@ def msg(msg, *args):
 
 
 def do_output(data, args, cmd):
+    """Output X509 structure
+    """
     if args.text:
         cmd = ['openssl', cmd, '-text']
         if args.out:
@@ -657,7 +740,6 @@ def do_output(data, args, cmd):
 def newkey_command(args):
     """Create new key.
     """
-
     # parse key-type argument
     short = {'ec': 'ec:secp256r1', 'rsa': 'rsa:2048'}
     if len(args.files) > 1:
@@ -688,7 +770,7 @@ def newkey_command(args):
 
     # Output with optional encryption
     fmt = PrivateFormat.PKCS8
-    psw = load_password(args)
+    psw = load_password(args.password_file)
     if psw:
         pem = k.private_bytes(Encoding.PEM, fmt, BestAvailableEncryption(psw))
     else:
@@ -697,7 +779,8 @@ def newkey_command(args):
 
 
 def info_from_args(args):
-    # Collect command-line args
+    """Collect command-line args
+    """
     subject_info = CertInfo(
         subject=parse_dn(args.subject),
         usage=parse_list(args.usage),
@@ -728,7 +811,7 @@ def req_command(args):
     subject_info.show()
 
     # Load private key, create req
-    key = load_key(args.key, load_password(args))
+    key = load_key(args.key, load_password(args.password_file))
     req = create_x509_req(key, subject_info)
     do_output(req, args, 'req')
 
@@ -796,7 +879,7 @@ def sign_command(args):
     subject_info.show()
 
     # Load CA private key
-    key = load_key(args.ca_key, load_password(args))
+    key = load_key(args.ca_key, load_password(args.password_file))
     if not same_pubkey(key, issuer_obj):
         die("--ca-private-key does not match --ca-info data")
 
@@ -820,6 +903,8 @@ def show_command(args):
 
 
 def setup_args():
+    """Create ArgumentParser
+    """
     p = argparse.ArgumentParser(description=__doc__.strip(), fromfile_prefix_chars='@',
                                 usage="%(prog)s --help | --version\n" +
                                 "       %(prog)s new-key [KEY_TYPE] [--password-file FN] [--out FN]\n" +
@@ -896,6 +981,8 @@ def run_sysca(argv):
 
 
 def main():
+    """Command-line application entry point.
+    """
     return run_sysca(sys.argv[1:])
 
 
