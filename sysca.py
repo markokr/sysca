@@ -25,10 +25,6 @@ from cryptography.x509.oid import (
     ExtensionOID, AuthorityInformationAccessOID)
 from cryptography import x509
 
-# fix bad default in older openssl and cryptography
-from cryptography.hazmat.backends.openssl import backend
-backend._lib.ASN1_STRING_set_default_mask_asc(b'utf8only')
-del backend
 
 __version__ = '0.5'
 

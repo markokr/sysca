@@ -21,7 +21,7 @@ Features
 Dependencies
 ------------
 
-- Python `cryptography`_ module.
+- Python `cryptography`_ module (version >= 1.2).
 - (Optional) `gpg`_ command-line tool to decrypt files.
 - (Optional) `openssl`_ command-line tool to show CRT/CSR contents.
 

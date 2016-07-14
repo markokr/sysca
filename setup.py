@@ -21,7 +21,7 @@ setup(
     author_email = "markokr@gmail.com",
     url = "https://github.com/markokr/sysca",
     py_modules = ['sysca'],
-    requires = ['cryptography(>=1.0)'],
+    requires = ['cryptography(>=1.2)'],
     keywords = ['x509', 'tls', 'ssl', 'certificate', 'authority', 'command-line', 'server', 'authentication'],
     entry_points={
         'console_scripts': ['sysca=sysca:main'],
