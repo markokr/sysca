@@ -11,23 +11,23 @@ longdesc = open('README.rst', 'r').read().strip()
 desc = longdesc.splitlines()[0].split('-', 1)[1].strip()
 
 setup(
-    name = "sysca",
-    version = version,
-    description = desc,
-    long_description = longdesc,
-    author = "Marko Kreen",
-    license = "ISC",
-    author_email = "markokr@gmail.com",
-    url = "https://github.com/markokr/sysca",
-    py_modules = ['sysca'],
-    install_requires=['cryptography>=1.2'],
-    tests_require=['nose'],
-    test_suite='nose.collector',
-    keywords = ['x509', 'tls', 'ssl', 'certificate', 'authority', 'command-line', 'server', 'authentication'],
+    name="sysca",
+    version=version,
+    description=desc,
+    long_description=longdesc,
+    author="Marko Kreen",
+    license="ISC",
+    author_email="markokr@gmail.com",
+    url="https://github.com/markokr/sysca",
+    py_modules=['sysca'],
     entry_points={
         'console_scripts': ['sysca=sysca:main'],
     },
-    classifiers = [
+    install_requires=['cryptography>=1.2'],
+    tests_require=['nose'],
+    test_suite='nose.collector',
+    keywords=['x509', 'tls', 'ssl', 'certificate', 'authority', 'command-line', 'server', 'authentication'],
+    classifiers=[
         "Development Status :: 4 - Beta",
         "Intended Audience :: System Administrators",
         "License :: OSI Approved :: ISC License (ISCL)",
