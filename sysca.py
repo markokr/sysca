@@ -365,7 +365,7 @@ class CertInfo:
         attlist = []
         for k, v in nmap.items():
             oid = DN_CODE_TO_OID[k]
-            n = x509.NameAttribute(oid, v)
+            n = x509.NameAttribute(oid, as_unicode(v))
             attlist.append(n)
         return x509.Name(attlist)
 
@@ -503,28 +503,28 @@ class CertInfo:
         # configured builder
         return builder
 
-    def show_list(self, desc, lst):
+    def show_list(self, desc, lst, writeln):
         """Print out list field.
         """
         if not lst:
             return
         val = ', '.join([list_escape(v) for v in lst])
-        msg("  %s: %s", desc, val)
+        writeln("%s: %s" % (desc, val))
 
-    def show(self):
+    def show(self, writeln):
         """Print out details.
         """
         if self.subject:
-            msg('  Subject: %s', render_name(self.subject))
-        self.show_list('SAN', self.san)
-        self.show_list('Usage', self.usage)
-        self.show_list('OCSP URLs', self.ocsp_urls)
-        self.show_list('Issuer URLs', self.issuer_urls)
-        self.show_list('CRL URLs', self.crl_urls)
-        self.show_list('Permit', self.permit_subtrees)
-        self.show_list('Exclude', self.exclude_subtrees)
+            writeln('Subject: %s' % render_name(self.subject))
+        self.show_list('SAN', self.san, writeln)
+        self.show_list('Usage', self.usage, writeln)
+        self.show_list('OCSP URLs', self.ocsp_urls, writeln)
+        self.show_list('Issuer URLs', self.issuer_urls, writeln)
+        self.show_list('CRL URLs', self.crl_urls, writeln)
+        self.show_list('Permit', self.permit_subtrees, writeln)
+        self.show_list('Exclude', self.exclude_subtrees, writeln)
         if self.ocsp_nocheck:
-            self.show_list('OCSP NoCheck', ['True'])
+            self.show_list('OCSP NoCheck', ['True'], writeln)
 
 
 def get_backend():
@@ -612,7 +612,7 @@ def key_to_pem(key, password=None):
     """Serialize key in PEM format, optionally encrypted.
     """
     if password:
-        enc = BestAvailableEncryption(password)
+        enc = BestAvailableEncryption(as_bytes(password))
     else:
         enc = NoEncryption()
     return key.private_bytes(Encoding.PEM, PrivateFormat.PKCS8, enc)
@@ -657,11 +657,13 @@ def load_gpg_file(fn):
     return out
 
 
-def load_key(fn, psw):
+def load_key(fn, psw=None):
     """Read private key, decrypt if needed.
     """
     if not fn:
         die("Need private key")
+    if psw:
+        psw = as_bytes(psw)
     data = load_gpg_file(fn)
     key = load_pem_private_key(data, password=psw, backend=get_backend())
     return key
@@ -836,6 +838,10 @@ def info_from_args(args):
     return subject_info
 
 
+def msg_show(ln):
+    msg('  %s', ln)
+
+
 def req_command(args):
     """Load args, create CSR.
     """
@@ -848,7 +854,7 @@ def req_command(args):
         msg('Request for CA cert')
     else:
         msg('Request for end-entity cert')
-    subject_info.show()
+    subject_info.show(msg_show)
 
     # Load private key, create req
     key = load_key(args.key, load_password(args.password_file))
@@ -916,7 +922,7 @@ def sign_command(args):
         msg('Signing end-entity cert [%s] - %s', pkeyinfo, args.request)
     msg('Issuer name: %s', render_name(issuer_info.subject))
     msg('Subject:')
-    subject_info.show()
+    subject_info.show(msg_show)
 
     # Load CA private key
     key = load_key(args.ca_key, load_password(args.password_file))
