@@ -32,7 +32,15 @@ del backend
 
 __version__ = '0.5'
 
-__all__ = ['CertInfo', 'create_x509_req', 'create_x509_cert', 'run_sysca']
+__all__ = [
+    'CertInfo',
+    'new_ec_key', 'new_rsa_key',
+    'load_key', 'load_req', 'load_cert',
+    'load_gpg_file', 'load_password',
+    'create_x509_req', 'create_x509_cert',
+    'key_to_pem', 'cert_to_pem', 'req_to_pem',
+    'run_sysca'
+]
 
 #
 # Shortcut maps
@@ -124,7 +132,7 @@ def _escape_char(m):
 
 
 def dn_escape(s):
-    """DistinguishedName backslash-escape"""
+    """Distinguishedname backslash-escape"""
     return re.sub(r'[\\/\x00-\x1F]', _escape_char, s)
 
 
@@ -545,8 +553,8 @@ def create_x509_req(privkey, subject_info):
     builder = subject_info.install_extensions(builder)
 
     # final req
-    cert = builder.sign(private_key=privkey, algorithm=SHA256(), backend=get_backend())
-    return cert.public_bytes(Encoding.PEM)
+    req = builder.sign(private_key=privkey, algorithm=SHA256(), backend=get_backend())
+    return req
 
 
 def create_x509_cert(privkey, pubkey, subject_info, issuer_info, days):
@@ -581,7 +589,45 @@ def create_x509_cert(privkey, pubkey, subject_info, issuer_info, days):
 
     # final cert
     cert = builder.sign(private_key=privkey, algorithm=SHA256(), backend=get_backend())
+    return cert
+
+
+def new_ec_key(name='secp256r1'):
+    """New Elliptic Curve key
+    """
+    if name not in EC_CURVES:
+        raise ValueError('Unknown curve')
+    return ec.generate_private_key(curve=EC_CURVES[name], backend=get_backend())
+
+
+def new_rsa_key(bits=2048):
+    """New RSA key.
+    """
+    if bits < MIN_RSA_BITS or bits > MAX_RSA_BITS:
+        raise ValueError('Bad value for bits')
+    return rsa.generate_private_key(key_size=bits, public_exponent=65537, backend=get_backend())
+
+
+def key_to_pem(key, password=None):
+    """Serialize key in PEM format, optionally encrypted.
+    """
+    if password:
+        enc = BestAvailableEncryption(password)
+    else:
+        enc = NoEncryption()
+    return key.private_bytes(Encoding.PEM, PrivateFormat.PKCS8, enc)
+
+
+def cert_to_pem(cert):
+    """Serialize certificate in PEM format.
+    """
     return cert.public_bytes(Encoding.PEM)
+
+
+def req_to_pem(req):
+    """Serialize certificate request in PEM format.
+    """
+    return req.public_bytes(Encoding.PEM)
 
 
 #
@@ -753,28 +799,22 @@ def newkey_command(args):
     # create key
     t, v = keydesc.lower().split(':')
     if t == 'ec':
-        if v not in EC_CURVES:
+        try:
+            k = new_ec_key(v)
+        except ValueError:
             die("Invalid curve: %s", v)
-        k = ec.generate_private_key(curve=EC_CURVES[v], backend=get_backend())
     elif t == 'rsa':
         try:
-            bits = int(v)
+            k = new_rsa_key(int(v))
         except ValueError:
-            die("Invalid value for bits: %s", v)
-        if bits < MIN_RSA_BITS or bits > MAX_RSA_BITS:
-            die("Bad size: %s", v)
-        k = rsa.generate_private_key(key_size=bits, public_exponent=65537, backend=get_backend())
+            die("Invalid value for RSA bits: %s", v)
     else:
-        raise Exception('Bad key type')
+        die('Bad key type: %s', t)
     msg("New key: %s", keydesc)
 
     # Output with optional encryption
-    fmt = PrivateFormat.PKCS8
     psw = load_password(args.password_file)
-    if psw:
-        pem = k.private_bytes(Encoding.PEM, fmt, BestAvailableEncryption(psw))
-    else:
-        pem = k.private_bytes(Encoding.PEM, fmt, NoEncryption())
+    pem = key_to_pem(k, psw)
     do_output(pem, args, t)
 
 
@@ -813,7 +853,7 @@ def req_command(args):
     # Load private key, create req
     key = load_key(args.key, load_password(args.password_file))
     req = create_x509_req(key, subject_info)
-    do_output(req, args, 'req')
+    do_output(req_to_pem(req), args, 'req')
 
 
 def sign_command(args):
@@ -885,7 +925,7 @@ def sign_command(args):
 
     # Stamp request
     cert = create_x509_cert(key, subject_csr.public_key(), subject_info, issuer_info, days=args.days)
-    do_output(cert, args, 'x509')
+    do_output(cert_to_pem(cert), args, 'x509')
 
 
 def show_command(args):
