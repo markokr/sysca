@@ -32,6 +32,8 @@ del backend
 
 __version__ = '0.5'
 
+__all__ = ['CertInfo', 'create_x509_req', 'create_x509_cert', 'run_sysca']
+
 #
 # Shortcut maps
 #
@@ -872,13 +874,13 @@ def setup_args():
     return p
 
 
-def main():
+def run_sysca(argv):
     """Parse args, run command.
     """
     global QUIET
 
-    p = setup_args()
-    args = p.parse_args(sys.argv[1:])
+    ap = setup_args()
+    args = ap.parse_args(argv)
     if args.quiet:
         QUIET = True
     if args.command == 'new-key':
@@ -891,6 +893,11 @@ def main():
         show_command(args)
     else:
         die("Unknown command: %s", args.command)
+
+
+def main():
+    return run_sysca(sys.argv[1:])
+
 
 if __name__ == '__main__':
     main()
