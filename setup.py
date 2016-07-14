@@ -1,4 +1,3 @@
-#! /usr/bin/env python
 
 from setuptools import setup
 
@@ -12,7 +11,7 @@ longdesc = open('README.rst', 'r').read().strip()
 desc = longdesc.splitlines()[0].split('-', 1)[1].strip()
 
 setup(
-    name = "SysCA",
+    name = "sysca",
     version = version,
     description = desc,
     long_description = longdesc,
