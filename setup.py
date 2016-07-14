@@ -1,6 +1,6 @@
 #! /usr/bin/env python
 
-from distutils.core import setup
+from setuptools import setup
 
 # load version without importing
 import re
@@ -20,9 +20,12 @@ setup(
     license = "ISC",
     author_email = "markokr@gmail.com",
     url = "https://github.com/markokr/sysca",
-    scripts = ['sysca.py'],
+    py_modules = ['sysca'],
     requires = ['cryptography(>=1.0)'],
     keywords = ['x509', 'tls', 'ssl', 'certificate', 'authority', 'command-line', 'server', 'authentication'],
+    entry_points={
+        'console_scripts': ['sysca=sysca:main'],
+    },
     classifiers = [
         "Development Status :: 4 - Beta",
         "Intended Audience :: System Administrators",
