@@ -5,8 +5,6 @@
 
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-__version__ = '0.5'
-
 import os.path
 import sys
 import uuid
@@ -19,10 +17,12 @@ from datetime import datetime, timedelta
 
 from cryptography.hazmat.primitives.asymmetric import ec, rsa
 from cryptography.hazmat.primitives.hashes import SHA256
-from cryptography.hazmat.primitives.serialization import Encoding, PrivateFormat, PublicFormat, \
-        BestAvailableEncryption, NoEncryption, load_pem_private_key
-from cryptography.x509.oid import NameOID, ExtendedKeyUsageOID, ObjectIdentifier, \
-        ExtensionOID, AuthorityInformationAccessOID
+from cryptography.hazmat.primitives.serialization import (
+    Encoding, PrivateFormat, PublicFormat,
+    BestAvailableEncryption, NoEncryption, load_pem_private_key)
+from cryptography.x509.oid import (
+    NameOID, ExtendedKeyUsageOID, ObjectIdentifier,
+    ExtensionOID, AuthorityInformationAccessOID)
 from cryptography import x509
 
 # fix bad default in older openssl and cryptography
@@ -30,18 +30,7 @@ from cryptography.hazmat.backends.openssl import backend
 backend._lib.ASN1_STRING_set_default_mask_asc(b'utf8only')
 del backend
 
-if sys.version_info[0] > 2:
-    unicode = str
-
-def as_bytes(s):
-    if isinstance(s, unicode):
-        return s.encode('utf8')
-    return s
-
-def as_unicode(s):
-    if isinstance(s, unicode):
-        return s
-    return s.decode('utf8')
+__version__ = '0.5'
 
 #
 # Shortcut maps
@@ -69,7 +58,7 @@ DN_CODE_TO_OID = {
     'C': NameOID.COUNTRY_NAME,
     'L': NameOID.LOCALITY_NAME,
     'ST': NameOID.STATE_OR_PROVINCE_NAME,
-    'SA': ObjectIdentifier('2.5.4.9'), # streetAddress
+    'SA': ObjectIdentifier('2.5.4.9'),      # streetAddress
 
     'SN': NameOID.SURNAME,
     'GN': NameOID.GIVEN_NAME,
@@ -103,28 +92,49 @@ XKU_CODE_TO_OID = {
 
 QUIET = False
 
+if sys.version_info[0] > 2:
+    unicode = str
+
+
+def as_bytes(s):
+    if isinstance(s, unicode):
+        return s.encode('utf8')
+    return s
+
+
+def as_unicode(s):
+    if isinstance(s, unicode):
+        return s
+    return s.decode('utf8')
+
+
 def _escape_char(m):
     c = m.group(0)
     if c in (',', '\\', '/'):
         return '\\' + c
     return '\\x%02x' % ord(c)
 
+
 def dn_escape(s):
     return re.sub(r'[\\/\x00-\x1F]', _escape_char, s)
+
 
 def list_escape(s):
     return re.sub(r'[\\,]', _escape_char, s)
 
+
 def _unescape_char(m):
-    xmap = { ',': ',', '/': '/', '\\': '\\', 't': '\t' }
+    xmap = {',': ',', '/': '/', '\\': '\\', 't': '\t'}
     c = m.group(1)
     if len(c) > 1:
         if c[0] == 'x':
             return chr(int(c[1:], 16))
     return xmap[c]
 
+
 def unescape(s):
     return re.sub(r'\\(x[0-9a-fA-F][0-9a-fA-F]|.)', _unescape_char, s)
+
 
 def render_name(name):
     res = ['']
@@ -134,10 +144,11 @@ def render_name(name):
     res.append('')
     return '/'.join(res)
 
+
 class CertInfo:
-    def __init__(self, subject=None, alt_names = None, ca=False, path_length=0,
-                 usage=None, load=None, ocsp_urls = None, crl_urls = None, issuer_urls = None,
-                 ocsp_nocheck = False,
+    def __init__(self, subject=None, alt_names=None, ca=False, path_length=0,
+                 usage=None, load=None, ocsp_urls=None, crl_urls=None, issuer_urls=None,
+                 ocsp_nocheck=False,
                  permit_subtrees=None, exclude_subtrees=None):
         self.ca = ca
         self.path_length = path_length
@@ -219,7 +230,7 @@ class CertInfo:
     def extract_xkey_usage(self, ext):
         """Walk oid list, return keywords.
         """
-        oidmap = { v: k for k, v in XKU_CODE_TO_OID.items() }
+        oidmap = {v: k for k, v in XKU_CODE_TO_OID.items()}
         res = []
         for oid in ext:
             if oid in oidmap:
@@ -246,7 +257,7 @@ class CertInfo:
     def extract_name(self, name):
         """Convert Name object to shortcut-dict.
         """
-        name_oid2code_map = { v: k for k, v in DN_CODE_TO_OID.items() }
+        name_oid2code_map = {v: k for k, v in DN_CODE_TO_OID.items()}
         res = {}
         for att in name:
             if att.oid not in name_oid2code_map:
@@ -322,7 +333,7 @@ class CertInfo:
                 else:
                     gn = x509.IPAddress(ipaddress.IPv4Network(val))
             else:
-                raise Exception('Invalid GeneralName: '+alt)
+                raise Exception('Invalid GeneralName: ' + alt)
             gnames.append(gn)
         return gnames
 
@@ -353,15 +364,15 @@ class CertInfo:
         builder = builder.add_extension(ext, critical=True)
 
         # KeyUsage, critical
-        ku_args = { k: k in self.usage for k in KU_FIELDS }
+        ku_args = {k: k in self.usage for k in KU_FIELDS}
         if self.ca:
             ku_args['key_cert_sign'] = True
             ku_args['crl_sign'] = True
-            ext = makeKeyUsage(**ku_args)
+            ext = make_key_usage(**ku_args)
         else:
             ku_args['digital_signature'] = True
             ku_args['key_encipherment'] = True
-            ext = makeKeyUsage(**ku_args)
+            ext = make_key_usage(**ku_args)
         builder = builder.add_extension(ext, critical=True)
 
         # ExtendedKeyUsage, critical
@@ -398,9 +409,9 @@ class CertInfo:
         # AuthorityInformationAccess
         if self.ocsp_urls or self.issuer_urls:
             oid = AuthorityInformationAccessOID.OCSP
-            ocsp_list = [ x509.AccessDescription(oid, gn) for gn in self.get_ocsp_gnames() ]
+            ocsp_list = [x509.AccessDescription(oid, gn) for gn in self.get_ocsp_gnames()]
             oid = AuthorityInformationAccessOID.CA_ISSUERS
-            ca_list = [ x509.AccessDescription(oid, gn) for gn in self.get_issuer_urls_gnames() ]
+            ca_list = [x509.AccessDescription(oid, gn) for gn in self.get_issuer_urls_gnames()]
             ext = x509.AuthorityInformationAccess(ocsp_list + ca_list)
             builder = builder.add_extension(ext, critical=False)
 
@@ -438,7 +449,8 @@ def get_backend():
     from cryptography.hazmat.backends import default_backend
     return default_backend()
 
-def makeKeyUsage(digital_signature=False, content_commitment=False, key_encipherment=False,
+
+def make_key_usage(digital_signature=False, content_commitment=False, key_encipherment=False,
                   data_encipherment=False, key_agreement=False, key_cert_sign=False,
                   crl_sign=False, encipher_only=False,  decipher_only=False):
     """Default args for KeyUsage.
@@ -447,6 +459,7 @@ def makeKeyUsage(digital_signature=False, content_commitment=False, key_encipher
             key_encipherment=key_encipherment, data_encipherment=data_encipherment,
             key_agreement=key_agreement, key_cert_sign=key_cert_sign, crl_sign=crl_sign,
             encipher_only=encipher_only, decipher_only=decipher_only)
+
 
 def create_x509_req(privkey, subject_info):
     """Main CSR creation code.
@@ -459,12 +472,13 @@ def create_x509_req(privkey, subject_info):
     cert = builder.sign(private_key=privkey, algorithm=SHA256(), backend=get_backend())
     return cert.public_bytes(Encoding.PEM)
 
+
 def create_x509_cert(privkey, pubkey, subject_info, issuer_info, days):
     """Main cert creation code.
     """
 
     dt_start = datetime.now()
-    dt_end = dt_start + timedelta(days = days)
+    dt_end = dt_start + timedelta(days=days)
 
     builder = (x509.CertificateBuilder()
         .subject_name(subject_info.get_name())
@@ -493,6 +507,7 @@ def create_x509_cert(privkey, pubkey, subject_info, issuer_info, days):
     cert = builder.sign(private_key=privkey, algorithm=SHA256(), backend=get_backend())
     return cert.public_bytes(Encoding.PEM)
 
+
 #
 # Command-line UI
 #
@@ -500,7 +515,7 @@ def create_x509_cert(privkey, pubkey, subject_info, issuer_info, days):
 def load_gpg_file(fn):
     """Decrypt file.
     """
-    ext =  os.path.splitext(fn)[1].lower()
+    ext = os.path.splitext(fn)[1].lower()
     if ext not in ('.gpg', '.pgp'):
         return open(fn, 'rb').read()
 
@@ -519,6 +534,7 @@ def load_gpg_file(fn):
 
     return out
 
+
 def load_key(fn, psw):
     """Read private key, decrypt if needed.
     """
@@ -528,12 +544,14 @@ def load_key(fn, psw):
     key = load_pem_private_key(data, password=psw, backend=get_backend())
     return key
 
+
 def load_req(fn):
     """Read CSR file.
     """
     data = open(fn, 'rb').read()
     req = x509.load_pem_x509_csr(data, get_backend())
     return req
+
 
 def load_cert(fn):
     """Read CRT file.
@@ -542,6 +560,7 @@ def load_cert(fn):
     crt = x509.load_pem_x509_certificate(data, get_backend())
     return crt
 
+
 def load_password(args):
     fn = args.password_file
     if not fn:
@@ -549,6 +568,7 @@ def load_password(args):
     data = load_gpg_file(fn)
     data = data.strip(b'\n')
     return data
+
 
 def loop_escaped(val, c):
     if not val:
@@ -566,6 +586,7 @@ def loop_escaped(val, c):
         pos = m.end()
         yield unescape(m.group(0))
 
+
 def parse_list(slist):
     """Parse comma-separated list to strings.
     """
@@ -575,6 +596,7 @@ def parse_list(slist):
         if v:
             res.append(v.strip())
     return res
+
 
 def parse_dn(dnstr):
     """Parse openssl-style /-separated list to dict.
@@ -590,6 +612,7 @@ def parse_dn(dnstr):
         res[k] = v.strip()
     return res
 
+
 def same_pubkey(o1, o2):
     """Compare public keys.
     """
@@ -598,11 +621,13 @@ def same_pubkey(o1, o2):
     p2 = o2.public_key().public_bytes(Encoding.PEM, fmt)
     return p1 == p2
 
+
 def die(msg, *args):
     if args:
         msg = msg % args
     sys.stderr.write(msg + '\n')
     sys.exit(1)
+
 
 def msg(msg, *args):
     if QUIET:
@@ -610,6 +635,7 @@ def msg(msg, *args):
     if args:
         msg = msg % args
     sys.stderr.write(msg + '\n')
+
 
 def do_output(data, args, cmd):
     if args.text:
@@ -625,12 +651,13 @@ def do_output(data, args, cmd):
         sys.stdout.write(as_unicode(data))
         sys.stdout.flush()
 
+
 def newkey_command(args):
     """Create new key.
     """
 
     # parse key-type argument
-    short = { 'ec': 'ec:secp256r1', 'rsa': 'rsa:2048' }
+    short = {'ec': 'ec:secp256r1', 'rsa': 'rsa:2048'}
     if len(args.files) > 1:
         die("Unexpected positional arguments")
     if args.files:
@@ -666,21 +693,23 @@ def newkey_command(args):
         pem = k.private_bytes(Encoding.PEM, fmt, NoEncryption())
     do_output(pem, args, t)
 
+
 def info_from_args(args):
     # Collect command-line args
     subject_info = CertInfo(
-            subject = parse_dn(args.subject),
-            usage = parse_list(args.usage),
-            alt_names = parse_list(args.san),
-            ocsp_nocheck = args.ocsp_nocheck,
-            ocsp_urls = parse_list(args.ocsp_urls),
-            crl_urls = parse_list(args.crl_urls),
-            issuer_urls = parse_list(args.issuer_urls),
-            permit_subtrees = parse_list(args.permit_subtrees),
-            exclude_subtrees = parse_list(args.exclude_subtrees),
-            ca = args.CA,
-            path_length = args.path_length)
+        subject=parse_dn(args.subject),
+        usage=parse_list(args.usage),
+        alt_names=parse_list(args.san),
+        ocsp_nocheck=args.ocsp_nocheck,
+        ocsp_urls=parse_list(args.ocsp_urls),
+        crl_urls=parse_list(args.crl_urls),
+        issuer_urls=parse_list(args.issuer_urls),
+        permit_subtrees=parse_list(args.permit_subtrees),
+        exclude_subtrees=parse_list(args.exclude_subtrees),
+        ca=args.CA,
+        path_length=args.path_length)
     return subject_info
+
 
 def req_command(args):
     """Load args, create CSR.
@@ -700,6 +729,7 @@ def req_command(args):
     key = load_key(args.key, load_password(args))
     req = create_x509_req(key, subject_info)
     do_output(req, args, 'req')
+
 
 def sign_command(args):
     """Load args, output cert.
@@ -721,17 +751,17 @@ def sign_command(args):
         issuer_obj = load_req(args.ca_info)
     else:
         issuer_obj = load_cert(args.ca_info)
-    issuer_info = CertInfo(load = issuer_obj)
+    issuer_info = CertInfo(load=issuer_obj)
 
     # Load certificate request
     subject_csr = load_req(args.request)
-    subject_info = CertInfo(load = subject_csr)
+    subject_info = CertInfo(load=subject_csr)
 
     # Check CA params
     if not same_pubkey(subject_csr, issuer_obj):
         if not issuer_info.ca:
             die("Issuer must be CA.")
-        if not 'key_cert_sign' in issuer_info.usage:
+        if 'key_cert_sign' not in issuer_info.usage:
             die("Issuer CA is not allowed to sign certs.")
     if subject_info.ca:
         if not same_pubkey(subject_csr, issuer_obj):
@@ -769,14 +799,15 @@ def sign_command(args):
         die("--ca-private-key does not match --ca-info data")
 
     # Stamp request
-    cert = create_x509_cert(key, subject_csr.public_key(), subject_info, issuer_info, days = args.days)
+    cert = create_x509_cert(key, subject_csr.public_key(), subject_info, issuer_info, days=args.days)
     do_output(cert, args, 'x509')
+
 
 def show_command(args):
     """Dump .crt and .csr files.
     """
     for fn in args.files:
-        ext =  os.path.splitext(fn)[1].lower()
+        ext = os.path.splitext(fn)[1].lower()
         if ext == '.csr':
             cmd = ['openssl', 'req', '-in', fn, '-text']
         elif ext == '.crt':
@@ -785,15 +816,16 @@ def show_command(args):
             die("Unsupported file: %s", fn)
         subprocess.check_call(cmd)
 
+
 def setup_args():
-    p = argparse.ArgumentParser(description = __doc__.strip(), fromfile_prefix_chars = '@',
-                                usage= "%(prog)s --help | --version\n" +
+    p = argparse.ArgumentParser(description=__doc__.strip(), fromfile_prefix_chars='@',
+                                usage="%(prog)s --help | --version\n" +
                                 "       %(prog)s new-key [KEY_TYPE] [--password-file FN] [--out FN]\n" +
                                 "       %(prog)s request --key KEY_FILE [--subject DN] [--san ALT] [...]\n" +
                                 "       %(prog)s sign --request FN --ca-key FN --ca-info FN --days N [...]\n" +
                                 "       %(prog)s show FILE")
     p.add_argument('--version', help='show version and exit', action='version',
-                   version = '%(prog)s ' + __version__)
+                   version='%(prog)s ' + __version__)
     p.add_argument('--password-file', help='File to load password from', metavar='FN')
     p.add_argument('--text', help='Add human-readable text about output', action='store_true')
     p.add_argument('--out', help='File to write output to, instead stdout', metavar='FN')
@@ -801,19 +833,22 @@ def setup_args():
     p.add_argument('command', help=argparse.SUPPRESS)
 
     p.add_argument_group('Command "new-key"',
-            "Generate new EC or RSA key.  Key type can be either ec:<curve> " +
-            "or rsa:<bits>.  Default: ec:secp256r1.")
+                         "Generate new EC or RSA key.  Key type can be either ec:<curve> "
+                         "or rsa:<bits>.  Default: ec:secp256r1.")
 
     g2 = p.add_argument_group('Command "request"',
-            "Create certificate request for private key")
+                              "Create certificate request for private key")
     g2.add_argument('--key', help='Private key file', metavar='FN')
 
     g2 = p.add_argument_group("Certificate fields")
     g2.add_argument('--subject', help='Subject Distinguished Name - /CN=foo/O=Org/OU=Web/')
-    g2.add_argument('--san', help='SubjectAltNames - ' +
-            'dns:hostname, email:addrspec, ip:ipaddr, uri:url, dn:DirName.', metavar='GNAMES')
-    g2.add_argument('--CA', help='Request CA cert.  Default: not set.', action = 'store_true')
-    g2.add_argument('--path-length', help='Max levels of sub-CAs.  Default: 0', type=int, default=0, metavar='DEPTH')
+    g2.add_argument('--san',
+                    help='SubjectAltNames - dns:hostname, email:addrspec, ip:ipaddr, uri:url, dn:DirName.',
+                    metavar='GNAMES')
+    g2.add_argument('--CA', help='Request CA cert.  Default: not set.', action='store_true')
+    g2.add_argument('--path-length',
+                    help='Max levels of sub-CAs.  Default: 0',
+                    type=int, default=0, metavar='DEPTH')
     g2.add_argument('--usage', help='Keywords: client, server, code, email, time, ocsp.')
     g2.add_argument('--ocsp-urls', help='URLs for OCSP info.', metavar='URLS')
     g2.add_argument('--ocsp-nocheck', help='Disable OCSP check.', action='store_true')
@@ -823,18 +858,19 @@ def setup_args():
     g2.add_argument('--exclude-subtrees', help='Disallowed NameConstraints.', metavar='GNAMES')
 
     g3 = p.add_argument_group('Command "sign"',
-            "Create certificate for key in certificate request.  " +
-            "All metadata is taken from certificate request file.")
+                              "Create certificate for key in certificate request.  "
+                              "All metadata is taken from certificate request file.")
     g3.add_argument('--ca-key', help='Private key file.', metavar='FN')
     g3.add_argument('--ca-info', help='Filename of CA details (CRT or CSR).', metavar='FN')
     g3.add_argument('--request', help='Filename of certificate request (CSR) to be signed.', metavar='FN')
     g3.add_argument('--days', help='Certificate lifetime in days', type=int)
 
     g4 = p.add_argument_group('Command "show"',
-            "Show CSR or CRT file contents.  Takes .crt or .csr filenames as arguments.")
+                              "Show CSR or CRT file contents.  Takes .crt or .csr filenames as arguments.")
     g4.add_argument('files', help=argparse.SUPPRESS, nargs='*')
 
     return p
+
 
 def main():
     """Parse args, run command.
