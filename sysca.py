@@ -273,7 +273,7 @@ class CertInfo:
                 val = self.extract_name(gn.value)
                 res.append('dn:' + render_name(val))
             else:
-                die("Unsupported subjectAltName type: %s", san)
+                die("Unsupported subjectAltName type: %s", gn)
         return res
 
     def load_name(self, nmap):
@@ -800,7 +800,7 @@ def setup_args():
     p.add_argument('--quiet', '-q', help='Be quiet', action='store_true')
     p.add_argument('command', help=argparse.SUPPRESS)
 
-    g1 = p.add_argument_group('Command "new-key"',
+    p.add_argument_group('Command "new-key"',
             "Generate new EC or RSA key.  Key type can be either ec:<curve> " +
             "or rsa:<bits>.  Default: ec:secp256r1.")
 
