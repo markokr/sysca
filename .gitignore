@@ -1,0 +1,17 @@
+__pycache__
+*.pyc
+*.swp
+*.o
+*.so
+*.egg-info
+*.debhelper
+*.log
+*.substvars
+*-stamp
+.tox
+.coverage
+.pybuild
+dist
+MANIFEST
+build
+tmp

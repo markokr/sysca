@@ -1,0 +1,29 @@
+
+strictness: high
+
+max-line-length: 120
+
+member-warnings: true
+
+test-warnings: true
+
+doc-warnings: true
+
+pylint:
+  options:
+    init-import: true
+    dummy-variables-rgx: _$|dummy|___
+
+mccabe:
+  run: false
+
+pep8:
+  disable:
+    - E128
+
+pep257:
+  disable:
+    - D200
+    - D202
+    - D203
+    - D204

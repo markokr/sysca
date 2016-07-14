@@ -1,0 +1,3 @@
+include tests/*.py test.sh
+include tox.ini .prospector.yaml .coveragerc
+include MANIFEST.in LICENSE.txt README.rst
