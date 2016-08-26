@@ -165,6 +165,16 @@ def render_name(name):
     res.append('')
     return '/'.join(res)
 
+def maybe_parse(val, parse_func, default):
+    if val is None:
+        return default
+    if isinstance(val, (unicode, str)):
+        return parse_func(val)
+    if isinstance(val, dict):
+        return val.copy()
+    if isinstance(val, list):
+        return val[:]
+    return val
 
 class CertInfo:
     """Container for certificate fields.
@@ -216,14 +226,14 @@ class CertInfo:
         """
         self.ca = ca
         self.path_length = path_length
-        self.subject = subject and subject.copy() or {}
-        self.san = alt_names and alt_names[:] or []
-        self.usage = usage and usage[:] or []
-        self.ocsp_urls = ocsp_urls and ocsp_urls[:] or []
-        self.crl_urls = crl_urls and crl_urls[:] or []
-        self.issuer_urls = issuer_urls and issuer_urls[:] or []
-        self.exclude_subtrees = exclude_subtrees and exclude_subtrees[:] or []
-        self.permit_subtrees = permit_subtrees and permit_subtrees[:] or []
+        self.subject = maybe_parse(subject, parse_dn, {})
+        self.san = maybe_parse(alt_names, parse_list, [])
+        self.usage = maybe_parse(usage, parse_list, [])
+        self.ocsp_urls = maybe_parse(ocsp_urls, parse_list, [])
+        self.crl_urls = maybe_parse(crl_urls, parse_list, [])
+        self.issuer_urls = maybe_parse(issuer_urls, parse_list, [])
+        self.exclude_subtrees = maybe_parse(exclude_subtrees, parse_list, [])
+        self.permit_subtrees = maybe_parse(permit_subtrees, parse_list, [])
         self.ocsp_nocheck = ocsp_nocheck
 
         if self.path_length < 0:
@@ -556,6 +566,14 @@ def create_x509_req(privkey, subject_info):
 def create_x509_cert(privkey, pubkey, subject_info, issuer_info, days):
     """Main cert creation code.
     """
+    if not isinstance(subject_info, CertInfo):
+        info = CertInfo()
+        info.load_from_existing(subject_info)
+        subject_info = info
+    if not isinstance(issuer_info, CertInfo):
+        info = CertInfo()
+        info.load_from_existing(issuer_info)
+        issuer_info = info
 
     dt_start = datetime.now()
     dt_end = dt_start + timedelta(days=days)
