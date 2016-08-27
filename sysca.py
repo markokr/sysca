@@ -575,8 +575,9 @@ def create_x509_cert(privkey, pubkey, subject_info, issuer_info, days):
         info.load_from_existing(issuer_info)
         issuer_info = info
 
-    dt_start = datetime.now()
-    dt_end = dt_start + timedelta(days=days)
+    dt_now = datetime.utcnow()
+    dt_start = dt_now - timedelta(hours=1)
+    dt_end = dt_now + timedelta(days=days)
 
     builder = (x509.CertificateBuilder()
         .subject_name(subject_info.get_name())
