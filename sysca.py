@@ -26,7 +26,7 @@ from cryptography.x509.oid import (
 from cryptography import x509
 
 
-__version__ = '1.0.1'
+__version__ = '1.0.2'
 
 __all__ = [
     'CertInfo',
