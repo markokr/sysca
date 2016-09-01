@@ -165,7 +165,10 @@ def render_name(name):
     res.append('')
     return '/'.join(res)
 
+
 def maybe_parse(val, parse_func, default):
+    """Parse argument value with func if string.
+    """
     if val is None:
         return default
     if isinstance(val, (unicode, str)):
@@ -175,6 +178,7 @@ def maybe_parse(val, parse_func, default):
     if isinstance(val, list):
         return val[:]
     return val
+
 
 class CertInfo:
     """Container for certificate fields.
