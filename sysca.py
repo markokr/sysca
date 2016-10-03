@@ -459,11 +459,14 @@ class CertInfo(object):
         if self.ca:
             ku_args['key_cert_sign'] = True
             ku_args['crl_sign'] = True
-            ext = make_key_usage(**ku_args)
-        else:
+        elif 'client' in self.usage:
+            ku_args['digital_signature'] = True
+        elif 'server' in self.usage:
             ku_args['digital_signature'] = True
             ku_args['key_encipherment'] = True
-            ext = make_key_usage(**ku_args)
+        elif not self.usage:
+            ku_args['digital_signature'] = True
+        ext = make_key_usage(**ku_args)
         builder = builder.add_extension(ext, critical=True)
 
         # ExtendedKeyUsage, critical
