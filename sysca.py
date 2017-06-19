@@ -110,12 +110,12 @@ def as_bytes(s):
     return s
 
 
-def as_unicode(s):
+def as_unicode(s, errs='strict'):
     """Return unicode-string.
     """
     if isinstance(s, unicode):
         return s
-    return s.decode('utf8')
+    return s.decode('utf8', errs)
 
 
 def _escape_char(m):
@@ -663,7 +663,7 @@ def load_gpg_file(fn):
     cmd = ['gpg', '-q', '-d', '--batch', '--no-tty', fn]
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     out, err = p.communicate()
-    log = as_unicode(err).strip()
+    log = as_unicode(err, 'replace').strip()
     if p.returncode != 0:
         die("%s: gpg failed: \n  %s", fn, log)
 
