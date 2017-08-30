@@ -180,7 +180,7 @@ def maybe_parse(val, parse_func, default):
     return val
 
 
-class CertInfo:
+class CertInfo(object):
     """Container for certificate fields.
     """
     def __init__(self, subject=None, alt_names=None, ca=False, path_length=0,
@@ -546,7 +546,7 @@ def get_backend():
 
 def make_key_usage(digital_signature=False, content_commitment=False, key_encipherment=False,
                   data_encipherment=False, key_agreement=False, key_cert_sign=False,
-                  crl_sign=False, encipher_only=False,  decipher_only=False):
+                  crl_sign=False, encipher_only=False, decipher_only=False):
     """Default args for KeyUsage.
     """
     return x509.KeyUsage(digital_signature=digital_signature, content_commitment=content_commitment,
@@ -858,6 +858,8 @@ def info_from_args(args):
 
 
 def msg_show(ln):
+    """Show indented line.
+    """
     msg('  %s', ln)
 
 
