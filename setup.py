@@ -28,7 +28,7 @@ setup(
     test_suite='nose.collector',
     keywords=['x509', 'tls', 'ssl', 'certificate', 'authority', 'command-line', 'server', 'authentication'],
     classifiers=[
-        "Development Status :: 4 - Beta",
+        "Development Status :: 5 - Production/Stable",
         "Intended Audience :: System Administrators",
         "License :: OSI Approved :: ISC License (ISCL)",
         "Operating System :: OS Independent",
