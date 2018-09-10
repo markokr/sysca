@@ -23,6 +23,7 @@ setup(
     entry_points={
         'console_scripts': ['sysca=sysca:main'],
     },
+    zip_safe=True,
     install_requires=['cryptography>=1.2'],
     tests_require=['nose'],
     test_suite='nose.collector',
