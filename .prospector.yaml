@@ -25,6 +25,7 @@ pylint:
     - too-many-lines
     - redefined-outer-name
     - redefined-builtin
+    - useless-object-inheritance
 
 mccabe:
   run: false
