@@ -1,17 +1,17 @@
-#! /usr/bin/env python
+#! /usr/bin/env python3
 
 """Certificate tool for sysadmins.
 """
 
 from __future__ import absolute_import, division, print_function, unicode_literals
 
+import argparse
+import ipaddress
 import os.path
+import re
+import subprocess
 import sys
 import uuid
-import argparse
-import subprocess
-import ipaddress
-import re
 
 from datetime import datetime, timedelta
 
@@ -20,10 +20,11 @@ from cryptography.hazmat.primitives.hashes import SHA256
 from cryptography.hazmat.primitives.serialization import (
     Encoding, PrivateFormat, PublicFormat,
     BestAvailableEncryption, NoEncryption, load_pem_private_key)
+
+from cryptography import x509
 from cryptography.x509.oid import (
     NameOID, ExtendedKeyUsageOID, ObjectIdentifier,
     ExtensionOID, AuthorityInformationAccessOID)
-from cryptography import x509
 
 
 __version__ = '1.0.4'
@@ -105,7 +106,7 @@ if sys.version_info[0] > 2:
 def as_bytes(s):
     """Return byte-string.
     """
-    if isinstance(s, unicode):
+    if not isinstance(s, bytes):
         return s.encode('utf8')
     return s
 
@@ -113,7 +114,7 @@ def as_bytes(s):
 def as_unicode(s, errs='strict'):
     """Return unicode-string.
     """
-    if isinstance(s, unicode):
+    if not isinstance(s, bytes):
         return s
     return s.decode('utf8', errs)
 
@@ -863,6 +864,66 @@ def msg_show(ln):
     msg('  %s', ln)
 
 
+def do_sign(subject_csr, issuer_obj, issuer_key, days, path_length, reqInfo):
+    """Sign with already loaded parameters.
+    """
+    # Certificate duration
+    if days is None:
+        die("Need --days")
+    if days <= 0:
+        die("Invalid --days")
+
+    # Load CA info
+    issuer_info = CertInfo(load=issuer_obj)
+
+    # Load certificate request
+    subject_info = CertInfo(load=subject_csr)
+
+    # Check CA params
+    if not same_pubkey(subject_csr, issuer_obj):
+        if not issuer_info.ca:
+            die("Issuer must be CA.")
+        if 'key_cert_sign' not in issuer_info.usage:
+            die("Issuer CA is not allowed to sign certs.")
+    if subject_info.ca:
+        if not same_pubkey(subject_csr, issuer_obj):
+            # not selfsigning, check depth
+            if issuer_info.path_length == 0:
+                die("Issuer cannot sign sub-CAs")
+            if issuer_info.path_length - 1 < path_length:
+                die("--path-length not allowed by issuer")
+
+    # Load subject's public key, check sanity
+    pkey = subject_csr.public_key()
+    if isinstance(pkey, ec.EllipticCurvePublicKey):
+        pkeyinfo = 'ec:' + str(pkey.curve.name)
+        if pkey.curve.name not in EC_CURVES:
+            die("Curve not allowed: %s", pkey.curve.name)
+    elif isinstance(pkey, rsa.RSAPublicKey):
+        pkeyinfo = 'rsa:' + str(pkey.key_size)
+        if pkey.key_size < MIN_RSA_BITS or pkey.key_size > MAX_RSA_BITS:
+            die("RSA size not allowed: %s", pkey.key_size)
+    else:
+        die("Unsupported public key: %s", str(pkey))
+
+    # Report
+    if subject_info.ca:
+        msg('Signing CA cert [%s] - %s', pkeyinfo, reqInfo)
+    else:
+        msg('Signing end-entity cert [%s] - %s', pkeyinfo, reqInfo)
+    msg('Issuer name: %s', render_name(issuer_info.subject))
+    msg('Subject:')
+    subject_info.show(msg_show)
+
+    # Load CA private key
+    if not same_pubkey(issuer_key, issuer_obj):
+        die("--ca-private-key does not match --ca-info data")
+
+    # Stamp request
+    cert = create_x509_cert(issuer_key, subject_csr.public_key(), subject_info, issuer_info, days=days)
+    return cert
+
+
 def req_command(args):
     """Load args, create CSR.
     """
@@ -889,12 +950,8 @@ def sign_command(args):
     if args.files:
         die("Unexpected positional arguments")
 
-    # Certificate duration
-    days = args.days
-    if days is None:
-        die("Need --days")
-    if days <= 0:
-        die("Invalid --days")
+    # Load certificate request
+    subject_csr = load_req(args.request)
 
     # Load CA info
     if not args.ca_info:
@@ -903,55 +960,39 @@ def sign_command(args):
         issuer_obj = load_req(args.ca_info)
     else:
         issuer_obj = load_cert(args.ca_info)
-    issuer_info = CertInfo(load=issuer_obj)
-
-    # Load certificate request
-    subject_csr = load_req(args.request)
-    subject_info = CertInfo(load=subject_csr)
-
-    # Check CA params
-    if not same_pubkey(subject_csr, issuer_obj):
-        if not issuer_info.ca:
-            die("Issuer must be CA.")
-        if 'key_cert_sign' not in issuer_info.usage:
-            die("Issuer CA is not allowed to sign certs.")
-    if subject_info.ca:
-        if not same_pubkey(subject_csr, issuer_obj):
-            # not selfsigning, check depth
-            if issuer_info.path_length == 0:
-                die("Issuer cannot sign sub-CAs")
-            if issuer_info.path_length - 1 < args.path_length:
-                die("--path-length not allowed by issuer")
-
-    # Load subject's public key, check sanity
-    pkey = subject_csr.public_key()
-    if isinstance(pkey, ec.EllipticCurvePublicKey):
-        pkeyinfo = 'ec:' + str(pkey.curve.name)
-        if pkey.curve.name not in EC_CURVES:
-            die("Curve not allowed: %s", pkey.curve.name)
-    elif isinstance(pkey, rsa.RSAPublicKey):
-        pkeyinfo = 'rsa:' + str(pkey.key_size)
-        if pkey.key_size < MIN_RSA_BITS or pkey.key_size > MAX_RSA_BITS:
-            die("RSA size not allowed: %s", pkey.key_size)
-    else:
-        die("Unsupported public key: %s", str(pkey))
-
-    # Report
-    if subject_info.ca:
-        msg('Signing CA cert [%s] - %s', pkeyinfo, args.request)
-    else:
-        msg('Signing end-entity cert [%s] - %s', pkeyinfo, args.request)
-    msg('Issuer name: %s', render_name(issuer_info.subject))
-    msg('Subject:')
-    subject_info.show(msg_show)
 
     # Load CA private key
-    key = load_key(args.ca_key, load_password(args.password_file))
-    if not same_pubkey(key, issuer_obj):
+    issuer_key = load_key(args.ca_key, load_password(args.password_file))
+    if not same_pubkey(issuer_key, issuer_obj):
         die("--ca-private-key does not match --ca-info data")
 
-    # Stamp request
-    cert = create_x509_cert(key, subject_csr.public_key(), subject_info, issuer_info, days=args.days)
+    # Certificate generation
+    cert = do_sign(subject_csr, issuer_obj, issuer_key, args.days, args.path_length, args.request)
+
+    # Write certificate
+    do_output(cert_to_pem(cert), args, 'x509')
+
+
+def selfsign_command(args):
+    """Load args, create selfsigned CRT.
+    """
+    if args.files:
+        die("Unexpected positional arguments")
+
+    subject_info = info_from_args(args)
+
+    if subject_info.ca:
+        msg('Request for CA cert')
+    else:
+        msg('Request for end-entity cert')
+    subject_info.show(msg_show)
+
+    # Load private key, create req
+    key = load_key(args.key, load_password(args.password_file))
+    subject_csr = create_x509_req(key, subject_info)
+    #do_output(req_to_pem(req), args, 'req')
+
+    cert = do_sign(subject_csr, subject_csr, key, args.days, args.path_length, '<selfsign>')
     do_output(cert_to_pem(cert), args, 'x509')
 
 
@@ -976,6 +1017,7 @@ def setup_args():
                                 usage="%(prog)s --help | --version\n" +
                                 "       %(prog)s new-key [KEY_TYPE] [--password-file FN] [--out FN]\n" +
                                 "       %(prog)s request --key KEY_FILE [--subject DN] [--san ALT] [...]\n" +
+                                "       %(prog)s selfsign --key KEY_FILE --days N [--subject DN] [--san ALT] [...]\n" +
                                 "       %(prog)s sign --request FN --ca-key FN --ca-info FN --days N [...]\n" +
                                 "       %(prog)s show FILE")
     p.add_argument('--version', help='show version and exit', action='version',
@@ -990,8 +1032,8 @@ def setup_args():
                          "Generate new EC or RSA key.  Key type can be either ec:<curve> "
                          "or rsa:<bits>.  Default: ec:secp256r1.")
 
-    g2 = p.add_argument_group('Command "request"',
-                              "Create certificate request for private key")
+    g2 = p.add_argument_group('Command "request" and "selfsign"',
+                              "Create certificate request or selfsigned certificate for private key")
     g2.add_argument('--key', help='Private key file', metavar='FN')
 
     g2 = p.add_argument_group("Certificate fields")
@@ -1041,6 +1083,8 @@ def run_sysca(argv):
         req_command(args)
     elif args.command == 'sign':
         sign_command(args)
+    elif args.command == 'selfsign':
+        selfsign_command(args)
     elif args.command == 'show':
         show_command(args)
     else:
