@@ -2,8 +2,7 @@
 import tempfile
 import os
 import collections
-
-from nose.tools import *
+import pytest
 
 import sysca
 
@@ -23,21 +22,21 @@ def test_sysca():
     # ca signs
     srv_info2 = sysca.CertInfo(load=srv_req)
     srv_cert = sysca.create_x509_cert(ca_key, srv_req.public_key(), srv_info2, ca_info, 365)
-    eq_(1, 1)
+
 
 def test_same_pubkey():
     k1 = sysca.new_ec_key()
     k2 = sysca.new_ec_key()
     k3 = sysca.new_rsa_key()
     k4 = sysca.new_rsa_key()
-    assert_true(sysca.same_pubkey(k1, k1))
-    assert_true(sysca.same_pubkey(k2, k2))
-    assert_true(sysca.same_pubkey(k3, k3))
-    assert_true(sysca.same_pubkey(k4, k4))
-    assert_false(sysca.same_pubkey(k1, k2))
-    assert_false(sysca.same_pubkey(k1, k3))
-    assert_false(sysca.same_pubkey(k3, k1))
-    assert_false(sysca.same_pubkey(k3, k4))
+    assert sysca.same_pubkey(k1, k1)
+    assert sysca.same_pubkey(k2, k2)
+    assert sysca.same_pubkey(k3, k3)
+    assert sysca.same_pubkey(k4, k4)
+    assert not sysca.same_pubkey(k1, k2)
+    assert not sysca.same_pubkey(k1, k3)
+    assert not sysca.same_pubkey(k3, k1)
+    assert not sysca.same_pubkey(k3, k4)
 
 def test_write_key():
     fd, name = tempfile.mkstemp()
@@ -47,29 +46,33 @@ def test_write_key():
         key = sysca.new_ec_key()
         open(name, 'wb').write(sysca.key_to_pem(key))
         key2 = sysca.load_key(name)
-        assert_true(sysca.same_pubkey(key, key2))
+        assert sysca.same_pubkey(key, key2)
 
         # ec key, encrypted
         key = sysca.new_ec_key()
         open(name, 'wb').write(sysca.key_to_pem(key, 'password'))
-        assert_raises(TypeError, sysca.load_key, name)
-        assert_raises(ValueError, sysca.load_key, name, 'wrong')
+        with pytest.raises(TypeError):
+            sysca.load_key(name)
+        with pytest.raises(ValueError):
+            sysca.load_key(name, 'wrong')
         key2 = sysca.load_key(name, 'password')
-        assert_true(sysca.same_pubkey(key, key2))
+        assert sysca.same_pubkey(key, key2)
 
         # rsa key, unencrypted
         key = sysca.new_rsa_key()
         open(name, 'wb').write(sysca.key_to_pem(key))
         key2 = sysca.load_key(name)
-        assert_true(sysca.same_pubkey(key, key2))
+        assert sysca.same_pubkey(key, key2)
 
         # rsa key, encrypted
         key = sysca.new_rsa_key()
         open(name, 'wb').write(sysca.key_to_pem(key, 'password'))
-        assert_raises(TypeError, sysca.load_key, name)
-        assert_raises(ValueError, sysca.load_key, name, 'wrong')
+        with pytest.raises(TypeError):
+            sysca.load_key(name)
+        with pytest.raises(ValueError):
+            sysca.load_key(name, 'wrong')
         key2 = sysca.load_key(name, 'password')
-        assert_true(sysca.same_pubkey(key, key2))
+        assert sysca.same_pubkey(key, key2)
     finally:
         os.unlink(name)
 
@@ -77,12 +80,12 @@ def test_render_name():
     d = collections.OrderedDict()
     d['CN'] = 'name'
     d['O'] = 'org'
-    eq_(sysca.render_name(d), '/CN=name/O=org/')
+    assert sysca.render_name(d) == '/CN=name/O=org/'
 
     d['X'] = r'x\b/z'
     w = sysca.render_name(d)
-    eq_(w, '/CN=name/O=org/X=x\\\\b\\/z/')
-    eq_(sysca.parse_dn(w), d)
+    assert w == '/CN=name/O=org/X=x\\\\b\\/z/'
+    assert sysca.parse_dn(w) == d
 
 
 def test_passthrough():
@@ -127,6 +130,6 @@ def test_passthrough():
     lst2 = []
     info.show(lst1.append)
     info2.show(lst2.append)
-    eq_(lst1, lst2)
+    assert lst1 == lst2
 
 

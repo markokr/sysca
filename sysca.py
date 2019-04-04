@@ -769,23 +769,23 @@ def same_pubkey(o1, o2):
     return p1 == p2
 
 
-def die(msg, *args):
+def die(txt, *args):
     """Print message and exit.
     """
     if args:
-        msg = msg % args
-    sys.stderr.write(msg + '\n')
+        txt = txt % args
+    sys.stderr.write(txt + '\n')
     sys.exit(1)
 
 
-def msg(msg, *args):
+def msg(txt, *args):
     """Print message to stderr.
     """
     if QUIET:
         return
     if args:
-        msg = msg % args
-    sys.stderr.write(msg + '\n')
+        txt = txt % args
+    sys.stderr.write(txt + '\n')
 
 
 def do_output(data, args, cmd):
