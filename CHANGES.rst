@@ -1,6 +1,12 @@
 Version history
 ===============
 
+1.1
+---
+
+* [cli] Add selfsign command.
+* [dev] Move to pylist+pytest.
+
 1.0.4
 -----
 

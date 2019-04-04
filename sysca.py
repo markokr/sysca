@@ -27,7 +27,7 @@ from cryptography.x509.oid import (
     ExtensionOID, AuthorityInformationAccessOID)
 
 
-__version__ = '1.0.4'
+__version__ = '1.1'
 
 __all__ = [
     'CertInfo',

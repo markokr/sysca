@@ -47,6 +47,15 @@ Create certificate signing request::
                   [--issuer-cert-url URLS]
                   [--out CSR_FN]
 
+Create selfsigned certificate::
+
+    sysca selfsign --key KEY_FILE --days N [--password-file TXT_FILE]
+                  [--subject DN] [--san ALTNAMES]
+                  [--CA] [--path-length DEPTH]
+                  [--usage FLAGS] [--ocsp-url URLS] [--crl-url URLS]
+                  [--issuer-cert-url URLS]
+                  [--out CRT_FN]
+
 Sign certificate signing request::
 
     sysca sign --ca-key KEY_FILE --ca-info CRT_FILE
@@ -331,7 +340,6 @@ extensions that are actually used.
 TODO
 ----
 
-* Shortcut for selfsigned cert?  (For top-CA)
 * Allow field overrides during sign?
 
 .. _Subject: https://tools.ietf.org/html/rfc5280#section-4.1.2.6
