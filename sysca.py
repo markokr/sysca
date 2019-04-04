@@ -951,6 +951,8 @@ def sign_command(args):
         die("Unexpected positional arguments")
 
     # Load certificate request
+    if not args.request:
+        die("Need --request")
     subject_csr = load_req(args.request)
 
     # Load CA info
