@@ -295,6 +295,13 @@ Options:
 --password-file FN
     Password file for CA private key.  Can be PGP-encrypted.
 
+selfsign
+~~~~~~~~
+
+This commands takes same arguments as `request` plus `--days NUM`.
+By default it avoids adding KeyUsage_ and ExtendedKeyUsage_
+as there are no good defaults.
+
 show
 ~~~~
 
@@ -319,8 +326,7 @@ Example
 Self-signed CA example::
 
     $ ./sysca.py new-key | gpg -aes -r "admin@example.com" > TestCA.key.gpg
-    $ ./sysca.py request --key TestCA.key.gpg --subject "/CN=TestCA/O=Gov" --CA > TestCA.csr
-    $ ./sysca.py sign --request TestCA.csr --ca-key TestCA.key.gpg --ca-info TestCA.csr > TestCA.crt
+    $ ./sysca.py selfsign --key TestCA.key.gpg --subject "/CN=TestCA/O=Gov" --CA > TestCA.crt
 
 Sign server key::
 
