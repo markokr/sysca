@@ -4,7 +4,12 @@ Version history
 1.1
 ---
 
-* [cli] Add selfsign command.
+* [feature] Add ``selfsign`` command.
+* [feature] Switches ``--ocsp-must-staple`` and ``--ocsp-must-staple-v2`` to set OCSP Must-Staple flags.
+* [feature] Switch ``--reset`` for sign to rewrite all info in CSR.
+* [feature] Support all DN fields defined in ``x509`` module.
+* [feature] Support multi-value attributes for DN.
+* [fix] Sanitize ``--usage`` defaults.
 * [dev] Move to pylist+pytest.
 
 1.0.4

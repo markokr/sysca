@@ -205,21 +205,18 @@ Options useful only when apps support them:
         any
             All other purposes too that are not explicitly mentioned.
 
-    KeyUsage_ flags, set by default.  Not much use for non-default
-    settings.
+    KeyUsage_ flags, by default CA certificate will have ``key_cert_sign`` and ``crl_sign`` set,
+        non-CA certificate will have ``digital_signature`` and ``key_encipherment`` set but only
+        if no ``--usage`` was given by user.
 
         digital_signature
             Allowed to sign anything that is not certificate for key.
-            Set by default for non-CAs.
         key_agreement
             Key is allowed to use in key agreement.
-            Set by default for non-CAs.
         key_cert_sign
             Allowed to sign certificates for other keys.
-            Set by default for CAs.
         crl_sign
             Allowed to sign certificates for certificate revocation lists (CRLs).
-            Set by default for CAs.
         key_encipherment
             Secret keys (either private or symmetric) can be encrypted against
             public key in certificate.  Does not apply to session keys, but
@@ -294,6 +291,10 @@ Options:
 
 --password-file FN
     Password file for CA private key.  Can be PGP-encrypted.
+
+--reset
+    Do not use any info fields from CSR, reload all info from command line.
+    Without it, all info from CSR is kept and command line is ignored.
 
 selfsign
 ~~~~~~~~

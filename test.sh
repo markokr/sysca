@@ -6,8 +6,8 @@ set -e
 pgp_me=$(sed -n -e '/^default-key /s/^[^ ]* //p' $HOME/.gnupg/gpg.conf)
 
 # both py2 and py3 should work
-sysca='python3 sysca.py'
 sysca='python2 sysca.py'
+sysca='python3 sysca.py'
 
 ## init temp dir
 
@@ -73,6 +73,8 @@ $sysca request \
   --issuer-url 'http://ftp.example.com/ca.crt, http://ftp2.example.com/ca.crt' \
   --usage 'client, server, code, email, time, ocsp, any, content_commitment' \
   --ocsp-nocheck \
+  --ocsp-must-staple \
+  --ocsp-must-staple-v2 \
   --out tmp/client.csr
 
 $sysca sign \
@@ -91,13 +93,15 @@ $sysca new-key rsa:4096 --out tmp/selfsigned.key
 
 $sysca selfsign \
   --key tmp/selfsigned.key \
-  --subject '/CN=client/ L = Fooza 1\/2 / SA=Läft 4\\b/' \
+  --subject '/CN=client/ L = Fooza 1\/2 / SA=Läft 4\\b/ BC=bc1 / BC=bc2 /' \
   --san 'dns:*.example.com , ip : 127.0.0.1, ip:::1, uri:http://localhost/, email: me@qqq.com, dn:/T=mööTitle/' \
   --crl-url 'http://crl0.example.com , http://crl1.example.com' \
   --ocsp-url 'http://ocsp0.example.com , http://ocsp1.example.com' \
   --issuer-url 'http://ftp.example.com/ca.crt, http://ftp2.example.com/ca.crt' \
   --usage 'client, server, code, email, time, ocsp, any, content_commitment' \
   --ocsp-nocheck \
+  --ocsp-must-staple \
+  --ocsp-must-staple-v2 \
   --days 900 \
   --out tmp/selfsigned.crt
 

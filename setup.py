@@ -7,7 +7,7 @@ src = open('sysca.py', 'r').read()
 version = re.search(r"""^__version__\s*=\s*['"]([^'"]+)['"]""", src, re.M).group(1)
 
 # load description
-longdesc = open('README.rst', 'r').read().strip()
+longdesc = open('README.rst', 'r').read().split('\nCommands\n')[0].strip()
 desc = longdesc.splitlines()[0].split('-', 1)[1].strip()
 
 setup(

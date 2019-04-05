@@ -77,12 +77,10 @@ def test_write_key():
         os.unlink(name)
 
 def test_render_name():
-    d = collections.OrderedDict()
-    d['CN'] = 'name'
-    d['O'] = 'org'
+    d = [('CN', 'name'), ('O', 'org')]
     assert sysca.render_name(d) == '/CN=name/O=org/'
 
-    d['X'] = r'x\b/z'
+    d.append(('X', r'x\b/z'))
     w = sysca.render_name(d)
     assert w == '/CN=name/O=org/X=x\\\\b\\/z/'
     assert sysca.parse_dn(w) == d
@@ -91,7 +89,30 @@ def test_render_name():
 def test_passthrough():
     key = sysca.new_ec_key()
     info = sysca.CertInfo(
-        subject={'CN': 'Passing'},
+        subject={
+            'CN': 'Passing',
+            'O': 'OrgName',
+            'OU': 'OrgUnit',
+            'C': 'CA',
+            'L': 'Location',
+            'ST': 'State',
+            'SN': 'Surname',
+            'GN': 'GivenName',
+            'T': 'Title',
+            'P': 'Pseudonym',
+            'GQ': 'GEN_QUAL',
+            'DQ': 'DN_QUAL',
+            'UID': 'UID',
+            'XUID': 'XUID',
+            'EMAIL': 'e@mail',
+            'SERIAL': 'EV_SERIAL',
+            'SA': 'StreetAddr',
+            'PA': 'PostalAddr',
+            'PC': 'PostalCode',
+            'JC': 'CA',
+            'JL': 'JurLocation',
+            'JST': 'JurState',
+        },
         ca=True,
         path_length=3,
         alt_names=[
@@ -99,7 +120,7 @@ def test_passthrough():
             'email:root@www.com',
             'ip:127.0.0.1',
             'uri:http://www.com',
-            'dn:/CN=sub-dn/',
+            'dn:/CN=sub-dn/BC=foo/BC=bar/',
         ],
         usage=[
             'digital_signature',
@@ -118,6 +139,9 @@ def test_passthrough():
             'ocsp',
             'any',
         ],
+        ocsp_must_staple=True,
+        ocsp_must_staple_v2=True,
+        ocsp_nocheck=True,
         ocsp_urls=['http://localhost'],
         issuer_urls=['http://localhost'],
         permit_subtrees=['dns:*.www.com'],

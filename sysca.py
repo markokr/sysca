@@ -21,14 +21,14 @@ from cryptography.hazmat.primitives.serialization import (
 
 from cryptography import x509
 from cryptography.x509.oid import (
-    NameOID, ExtendedKeyUsageOID, ObjectIdentifier,
+    NameOID, ExtendedKeyUsageOID,
     ExtensionOID, AuthorityInformationAccessOID)
 
 
 __version__ = '1.1'
 
 __all__ = [
-    'CertInfo',
+    'CertInfo', 'InvalidCertificate',
     'new_ec_key', 'new_rsa_key',
     'load_key', 'load_req', 'load_cert',
     'load_gpg_file', 'load_password',
@@ -37,9 +37,11 @@ __all__ = [
     'run_sysca'
 ]
 
+class InvalidCertificate(ValueError):
+    """Invalid input for certificate."""
+
 #
-# Shortcut maps
-#
+# Key params
 
 MIN_RSA_BITS = 1024
 MAX_RSA_BITS = 8192
@@ -54,45 +56,92 @@ EC_CURVES = {
     'prime256v1': ec.SECP256R1,
 }
 
+#
+# Shortcut maps
+#
+
 DN_CODE_TO_OID = {
     'CN': NameOID.COMMON_NAME,
 
     'O': NameOID.ORGANIZATION_NAME,
-    'OU': NameOID.ORGANIZATIONAL_UNIT_NAME,
+    'OU': NameOID.ORGANIZATIONAL_UNIT_NAME,     # multi
 
     'C': NameOID.COUNTRY_NAME,
     'L': NameOID.LOCALITY_NAME,
     'ST': NameOID.STATE_OR_PROVINCE_NAME,
-    'SA': ObjectIdentifier('2.5.4.9'),      # streetAddress
 
     'SN': NameOID.SURNAME,
     'GN': NameOID.GIVEN_NAME,
     'T': NameOID.TITLE,
+    'P': NameOID.PSEUDONYM,
+
     'GQ': NameOID.GENERATION_QUALIFIER,
     'DQ': NameOID.DN_QUALIFIER,
-    'P': NameOID.PSEUDONYM,
+
+    'UID': NameOID.USER_ID,
+    'XUID': NameOID.X500_UNIQUE_IDENTIFIER,
+    'EMAIL': NameOID.EMAIL_ADDRESS,
+    'SERIAL': NameOID.SERIAL_NUMBER,
+    'SA': NameOID.STREET_ADDRESS,       # multi
+    'PA': NameOID.POSTAL_ADDRESS,       # multi
+    'PC': NameOID.POSTAL_CODE,
+
+    'JC': NameOID.JURISDICTION_COUNTRY_NAME,
+    'JL': NameOID.JURISDICTION_LOCALITY_NAME,
+    'JST': NameOID.JURISDICTION_STATE_OR_PROVINCE_NAME,
+
+    'BC': NameOID.BUSINESS_CATEGORY,    # multi
+    'DC': NameOID.DOMAIN_COMPONENT,     # multi
 }
 
+DN_ALLOW_MULTIPLE = set(['STREET', 'BC', 'DC', 'OU', 'SA', 'PA'])
+
 KU_FIELDS = [
-    'digital_signature',
-    'content_commitment',
-    'key_encipherment',
-    'data_encipherment',
-    'key_agreement',
-    'key_cert_sign',
-    'crl_sign',
-    'encipher_only',
-    'decipher_only',
+    'digital_signature',    # non-CA signatures
+    'content_commitment',   # weird signatures.  old alias: non_repudiation
+    'key_encipherment',     # SSL-RSA key exchange
+    'data_encipherment',    # Historical.
+    'key_agreement',        # Historical?
+    'key_cert_sign',        # CA
+    'crl_sign',             # CA
+    'encipher_only',        # option for key_agreement
+    'decipher_only',        # option for key_agreement
 ]
 
 XKU_CODE_TO_OID = {
-    'any': ObjectIdentifier('2.5.29.37.0'),         # anyExtendedKeyUsage
+    'any': ExtendedKeyUsageOID.ANY_EXTENDED_KEY_USAGE,
     'server': ExtendedKeyUsageOID.SERVER_AUTH,
     'client': ExtendedKeyUsageOID.CLIENT_AUTH,
     'code': ExtendedKeyUsageOID.CODE_SIGNING,
     'email': ExtendedKeyUsageOID.EMAIL_PROTECTION,
     'time': ExtendedKeyUsageOID.TIME_STAMPING,
     'ocsp': ExtendedKeyUsageOID.OCSP_SIGNING,
+}
+
+# minimal KU defaults to add when XKU is given
+XKU_DEFAULTS = {
+    'any': ['digital_signature', 'key_encipherment', 'key_agreement', 'content_commitment', 'data_encipherment', 'key_cert_sign', 'crl_sign'],
+    'server': ['digital_signature', 'key_encipherment'], # key_agreement
+    'client': ['digital_signature'], # key_agreement
+    'code': ['digital_signature'], # -
+    'email': ['digital_signature', 'key_encipherment'], # content_commitment, key_agreement
+    'time': ['digital_signature'], # content_commitment
+    'ocsp': ['digital_signature'], # content_commitment
+
+    'encipher_only': ['key_agreement'],
+    'decipher_only': ['key_agreement'],
+}
+
+# required for CA
+CA_DEFAULTS = {
+    'key_cert_sign': True,
+    'crl_sign': True,
+}
+
+# allow client, server and email use
+NONCA_DEFAULTS = {
+    'digital_signature': True,
+    'key_encipherment': True,
 }
 
 QUIET = False
@@ -151,28 +200,28 @@ def unescape(s):
     return re.sub(r'\\(x[0-9a-fA-F][0-9a-fA-F]|.)', _unescape_char, s)
 
 
-def render_name(name):
+def render_name(name_att_list):
     """Convert DistinguishedName dict to '/'-separated string.
     """
     res = ['']
-    for k, v in name.items():
+    for k, v in name_att_list:
         v = dn_escape(v)
         res.append("%s=%s" % (k, v))
     res.append('')
     return '/'.join(res)
 
 
-def maybe_parse(val, parse_func, default):
+def maybe_parse(val, parse_func):
     """Parse argument value with func if string.
     """
     if val is None:
-        return default
+        return []
     if isinstance(val, (bytes, str)):
         return parse_func(val)
     if isinstance(val, dict):
-        return val.copy()
-    if isinstance(val, list):
-        return val[:]
+        return list(val.items())
+    if isinstance(val, (list, tuple)):
+        return list(val)
     return val
 
 
@@ -180,9 +229,10 @@ class CertInfo(object):
     """Container for certificate fields.
     """
     def __init__(self, subject=None, alt_names=None, ca=False, path_length=0,
-                 usage=None, load=None, ocsp_urls=None, crl_urls=None, issuer_urls=None,
-                 ocsp_nocheck=False,
-                 permit_subtrees=None, exclude_subtrees=None):
+                 usage=None, ocsp_urls=None, crl_urls=None, issuer_urls=None,
+                 ocsp_nocheck=False, ocsp_must_staple=False, ocsp_must_staple_v2=False,
+                 permit_subtrees=None, exclude_subtrees=None,
+                 load=None):
         """Setup up details.
 
         Args:
@@ -214,6 +264,12 @@ class CertInfo(object):
             ocsp_nocheck
                 mark as not to be checked via OCSP
 
+            ocsp_must_staple
+                mark that OCSP status_request is required
+
+            ocsp_must_staple_v2
+                mark that OCSP status_request_v2 is required
+
             permit_subtrees
                 list of gnames for permitted subtrees
 
@@ -226,15 +282,17 @@ class CertInfo(object):
         """
         self.ca = ca
         self.path_length = path_length
-        self.subject = maybe_parse(subject, parse_dn, {})
-        self.san = maybe_parse(alt_names, parse_list, [])
-        self.usage = maybe_parse(usage, parse_list, [])
-        self.ocsp_urls = maybe_parse(ocsp_urls, parse_list, [])
-        self.crl_urls = maybe_parse(crl_urls, parse_list, [])
-        self.issuer_urls = maybe_parse(issuer_urls, parse_list, [])
-        self.exclude_subtrees = maybe_parse(exclude_subtrees, parse_list, [])
-        self.permit_subtrees = maybe_parse(permit_subtrees, parse_list, [])
+        self.subject = maybe_parse(subject, parse_dn)
+        self.san = maybe_parse(alt_names, parse_list)
+        self.usage = maybe_parse(usage, parse_list)
+        self.ocsp_urls = maybe_parse(ocsp_urls, parse_list)
+        self.crl_urls = maybe_parse(crl_urls, parse_list)
+        self.issuer_urls = maybe_parse(issuer_urls, parse_list)
+        self.exclude_subtrees = maybe_parse(exclude_subtrees, parse_list)
+        self.permit_subtrees = maybe_parse(permit_subtrees, parse_list)
         self.ocsp_nocheck = ocsp_nocheck
+        self.ocsp_must_staple = ocsp_must_staple
+        self.ocsp_must_staple_v2 = ocsp_must_staple_v2
 
         if self.path_length < 0:
             self.path_length = None
@@ -252,14 +310,14 @@ class CertInfo(object):
             extobj = ext.value
             if ext.oid == ExtensionOID.BASIC_CONSTRAINTS:
                 if not crit:
-                    die("BASIC_CONSTRAINTS must be critical")
+                    raise InvalidCertificate("BASIC_CONSTRAINTS must be critical")
                 self.ca = extobj.ca
                 self.path_length = None
                 if self.ca:
                     self.path_length = extobj.path_length
             elif ext.oid == ExtensionOID.KEY_USAGE:
                 if not crit:
-                    die("KEY_USAGE must be critical")
+                    raise InvalidCertificate("KEY_USAGE must be critical")
                 self.usage += self.extract_key_usage(extobj)
             elif ext.oid == ExtensionOID.SUBJECT_ALTERNATIVE_NAME:
                 self.san = self.extract_gnames(extobj)
@@ -268,7 +326,7 @@ class CertInfo(object):
             elif ext.oid == ExtensionOID.AUTHORITY_INFORMATION_ACCESS:
                 for ad in extobj:
                     if not isinstance(ad.access_location, x509.UniformResourceIdentifier):
-                        die("Unsupported access_location: %s", ad.access_location)
+                        InvalidCertificate("Unsupported access_location: %s" % (ad.access_location,))
                     url = as_unicode(ad.access_location.value)
 
                     if ad.access_method == AuthorityInformationAccessOID.CA_ISSUERS:
@@ -276,21 +334,21 @@ class CertInfo(object):
                     elif ad.access_method == AuthorityInformationAccessOID.OCSP:
                         self.ocsp_urls.append(url)
                     else:
-                        die("Unsupported access_method: %s", ad.access_method)
+                        raise InvalidCertificate("Unsupported access_method: %s" % (ad.access_method,))
             elif ext.oid == ExtensionOID.CRL_DISTRIBUTION_POINTS:
                 for dp in extobj:
                     if dp.relative_name:
-                        die("DistributionPoint.relative_name not supported")
+                        raise InvalidCertificate("DistributionPoint.relative_name not supported")
                     if dp.crl_issuer:
-                        die("DistributionPoint.crl_issuer not supported")
+                        raise InvalidCertificate("DistributionPoint.crl_issuer not supported")
                     if dp.reasons:
-                        die("DistributionPoint.reasons not supported")
+                        raise InvalidCertificate("DistributionPoint.reasons not supported")
 
                     for gn in self.extract_gnames(dp.full_name):
                         if gn.startswith('uri:'):
                             self.crl_urls.append(gn[4:])
                         else:
-                            die("Unsupported DistributionPoint: %s", gn)
+                            raise InvalidCertificate("Unsupported DistributionPoint: %s" % (gn,))
             elif ext.oid == ExtensionOID.NAME_CONSTRAINTS:
                 self.permit_subtrees = self.extract_gnames(extobj.permitted_subtrees)
                 self.exclude_subtrees = self.extract_gnames(extobj.excluded_subtrees)
@@ -300,8 +358,16 @@ class CertInfo(object):
                 pass
             elif ext.oid == ExtensionOID.OCSP_NO_CHECK:
                 self.ocsp_nocheck = True
+            elif ext.oid == ExtensionOID.TLS_FEATURE:
+                for tls_feature_code in extobj:
+                    if tls_feature_code == x509.TLSFeatureType.status_request:
+                        self.ocsp_must_staple = True
+                    elif tls_feature_code == x509.TLSFeatureType.status_request_v2:
+                        self.ocsp_must_staple_v2 = True
+                    else:
+                        raise InvalidCertificate("Unsupported TLSFeature: %r" % (tls_feature_code,))
             else:
-                die("Unsupported extension in CSR: %s", ext)
+                raise InvalidCertificate("Unsupported extension in CSR: %s" % (ext,))
 
     def extract_xkey_usage(self, ext):
         """Walk oid list, return keywords.
@@ -312,7 +378,7 @@ class CertInfo(object):
             if oid in oidmap:
                 res.append(oidmap[oid])
             else:
-                die("Unsupported ExtendedKeyUsage oid: %s", oid)
+                raise InvalidCertificate("Unsupported ExtendedKeyUsage oid: %s" % (oid,))
         return res
 
     def extract_key_usage(self, ext):
@@ -336,13 +402,13 @@ class CertInfo(object):
         """Convert Name object to shortcut-dict.
         """
         name_oid2code_map = {v: k for k, v in DN_CODE_TO_OID.items()}
-        res = {}
+        res = []
         for att in name:
             if att.oid not in name_oid2code_map:
-                die("Unsupported RDN: %s", att)
+                raise InvalidCertificate("Unsupported RDN: %s" % (att,))
             desc = name_oid2code_map[att.oid]
             val = as_unicode(att.value)
-            res[desc] = val
+            res.append((desc, val))
         return res
 
     def extract_gnames(self, ext):
@@ -362,14 +428,17 @@ class CertInfo(object):
                 val = self.extract_name(gn.value)
                 res.append('dn:' + render_name(val))
             else:
-                die("Unsupported subjectAltName type: %s", gn)
+                raise InvalidCertificate("Unsupported subjectAltName type: %s" % (gn,))
         return res
 
-    def load_name(self, nmap):
+    def load_name(self, name_att_list):
         """Create Name object from subject DN.
         """
         attlist = []
-        for k, v in nmap.items():
+        got = set()
+        for k, v in name_att_list:
+            if k in got and k not in DN_ALLOW_MULTIPLE:
+                raise InvalidCertificate("Multiple Name keys not allowed: %s" % (k,))
             oid = DN_CODE_TO_OID[k]
             n = x509.NameAttribute(oid, as_unicode(v))
             attlist.append(n)
@@ -386,7 +455,7 @@ class CertInfo(object):
         gnames = []
         for alt in gname_list:
             if ':' not in alt:
-                die("Invalid gname: %s", alt)
+                raise InvalidCertificate("Invalid gname: %s" % (alt,))
             t, val = alt.split(':', 1)
             t = t.lower().strip()
             val = val.strip()
@@ -438,6 +507,16 @@ class CertInfo(object):
         urls = ['uri:' + u for u in self.crl_urls]
         return self.load_gnames(urls)
 
+    def get_tls_features(self):
+        """Return TLS Feature list
+        """
+        tls_features = []
+        if self.ocsp_must_staple:
+            tls_features.append(x509.TLSFeatureType.status_request)
+        if self.ocsp_must_staple_v2:
+            tls_features.append(x509.TLSFeatureType.status_request_v2)
+        return tls_features
+
     def install_extensions(self, builder):
         """Add common extensions to Cert- or CSR builder.
         """
@@ -452,15 +531,13 @@ class CertInfo(object):
         # KeyUsage, critical
         ku_args = {k: k in self.usage for k in KU_FIELDS}
         if self.ca:
-            ku_args['key_cert_sign'] = True
-            ku_args['crl_sign'] = True
-        elif 'client' in self.usage:
-            ku_args['digital_signature'] = True
-        elif 'server' in self.usage:
-            ku_args['digital_signature'] = True
-            ku_args['key_encipherment'] = True
+            ku_args.update(CA_DEFAULTS)
         elif not self.usage:
-            ku_args['digital_signature'] = True
+            ku_args.update(NONCA_DEFAULTS)
+        for k in XKU_DEFAULTS:
+            if k in self.usage:
+                for k2 in XKU_DEFAULTS[k]:
+                    ku_args[k2] = True
         ext = make_key_usage(**ku_args)
         builder = builder.add_extension(ext, critical=True)
 
@@ -468,7 +545,7 @@ class CertInfo(object):
         xku = [x for x in self.usage if x not in KU_FIELDS]
         xku_bad = [x for x in xku if x not in XKU_CODE_TO_OID]
         if xku_bad:
-            die("Unknown usage keywords: %s", ','.join(xku_bad))
+            raise InvalidCertificate("Unknown usage keywords: %s" % (','.join(xku_bad),))
         if xku:
             xku_oids = [XKU_CODE_TO_OID[x] for x in xku]
             ext = x509.ExtendedKeyUsage(xku_oids)
@@ -509,6 +586,12 @@ class CertInfo(object):
             ext = x509.OCSPNoCheck()
             builder = builder.add_extension(ext, critical=False)
 
+        # TLSFeature: status_request, status_request_v2
+        tls_features = self.get_tls_features()
+        if tls_features:
+            ext = x509.TLSFeature(tls_features)
+            builder = builder.add_extension(ext, critical=False)
+
         # configured builder
         return builder
 
@@ -534,6 +617,14 @@ class CertInfo(object):
         self.show_list('Exclude', self.exclude_subtrees, writeln)
         if self.ocsp_nocheck:
             self.show_list('OCSP NoCheck', ['True'], writeln)
+
+        tls_features = []
+        if self.ocsp_must_staple:
+            tls_features.append('status_request')
+        if self.ocsp_must_staple_v2:
+            tls_features.append('status_request_v2')
+        if tls_features:
+            self.show_list('TLS Features', tls_features, writeln)
 
 
 def get_backend():
@@ -719,7 +810,7 @@ def loop_escaped(val, c):
     if not val:
         val = ''
     val = as_unicode(val)
-    rc = re.compile(r'([^%c\\]|\\.)*' % c)
+    rc = re.compile(r'([^%s\\]|\\.)*' % re.escape(c))
     pos = 0
     while pos < len(val):
         if val[pos] == c:
@@ -739,22 +830,22 @@ def parse_list(slist):
     for v in loop_escaped(slist, ','):
         v = v.strip()
         if v:
-            res.append(v.strip())
+            res.append(v)
     return res
 
 
 def parse_dn(dnstr):
     """Parse openssl-style /-separated list to dict.
     """
-    res = {}
+    res = []
     for part in loop_escaped(dnstr, '/'):
+        part = part.strip()
+        if not part:
+            continue
         if '=' not in part:
-            die("Need k=v in Name string")
+            raise InvalidCertificate("Need k=v in Name string")
         k, v = part.split('=', 1)
-        k = k.strip()
-        if k in res:
-            die("Double key: %s (%s)", k, dnstr)
-        res[k] = v.strip()
+        res.append((k.strip(), v.strip()))
     return res
 
 
@@ -841,11 +932,13 @@ def newkey_command(args):
 def info_from_args(args):
     """Collect command-line args
     """
-    subject_info = CertInfo(
+    return CertInfo(
         subject=parse_dn(args.subject),
         usage=parse_list(args.usage),
         alt_names=parse_list(args.san),
         ocsp_nocheck=args.ocsp_nocheck,
+        ocsp_must_staple=args.ocsp_must_staple,
+        ocsp_must_staple_v2=args.ocsp_must_staple_v2,
         ocsp_urls=parse_list(args.ocsp_urls),
         crl_urls=parse_list(args.crl_urls),
         issuer_urls=parse_list(args.issuer_urls),
@@ -853,7 +946,6 @@ def info_from_args(args):
         exclude_subtrees=parse_list(args.exclude_subtrees),
         ca=args.CA,
         path_length=args.path_length)
-    return subject_info
 
 
 def msg_show(ln):
@@ -862,7 +954,7 @@ def msg_show(ln):
     msg('  %s', ln)
 
 
-def do_sign(subject_csr, issuer_obj, issuer_key, days, path_length, reqInfo):
+def do_sign(subject_csr, issuer_obj, issuer_key, days, path_length, reqInfo, reset_info=None):
     """Sign with already loaded parameters.
     """
     # Certificate duration
@@ -876,6 +968,8 @@ def do_sign(subject_csr, issuer_obj, issuer_key, days, path_length, reqInfo):
 
     # Load certificate request
     subject_info = CertInfo(load=subject_csr)
+    if reset_info:
+        subject_info = reset_info
 
     # Check CA params
     if not same_pubkey(subject_csr, issuer_obj):
@@ -953,6 +1047,10 @@ def sign_command(args):
         die("Need --request")
     subject_csr = load_req(args.request)
 
+    reset_info = None
+    if args.reset:
+        reset_info = info_from_args(args)
+
     # Load CA info
     if not args.ca_info:
         die("Need --ca-info")
@@ -967,7 +1065,7 @@ def sign_command(args):
         die("--ca-private-key does not match --ca-info data")
 
     # Certificate generation
-    cert = do_sign(subject_csr, issuer_obj, issuer_key, args.days, args.path_length, args.request)
+    cert = do_sign(subject_csr, issuer_obj, issuer_key, args.days, args.path_length, args.request, reset_info=reset_info)
 
     # Write certificate
     do_output(cert_to_pem(cert), args, 'x509')
@@ -990,7 +1088,6 @@ def selfsign_command(args):
     # Load private key, create req
     key = load_key(args.key, load_password(args.password_file))
     subject_csr = create_x509_req(key, subject_info)
-    #do_output(req_to_pem(req), args, 'req')
 
     cert = do_sign(subject_csr, subject_csr, key, args.days, args.path_length, '<selfsign>')
     do_output(cert_to_pem(cert), args, 'x509')
@@ -1018,7 +1115,7 @@ def setup_args():
                                 "       %(prog)s new-key [KEY_TYPE] [--password-file FN] [--out FN]\n" +
                                 "       %(prog)s request --key KEY_FILE [--subject DN] [--san ALT] [...]\n" +
                                 "       %(prog)s selfsign --key KEY_FILE --days N [--subject DN] [--san ALT] [...]\n" +
-                                "       %(prog)s sign --request FN --ca-key FN --ca-info FN --days N [...]\n" +
+                                "       %(prog)s sign --request FN --ca-key FN --ca-info FN --days N [--reset] [...]\n" +
                                 "       %(prog)s show FILE")
     p.add_argument('--version', help='show version and exit', action='version',
                    version='%(prog)s ' + __version__)
@@ -1048,6 +1145,8 @@ def setup_args():
     g2.add_argument('--usage', help='Keywords: client, server, code, email, time, ocsp.')
     g2.add_argument('--ocsp-urls', help='URLs for OCSP info.', metavar='URLS')
     g2.add_argument('--ocsp-nocheck', help='Disable OCSP check.', action='store_true')
+    g2.add_argument('--ocsp-must-staple', help='OCSP Must-Staple.', action='store_true')
+    g2.add_argument('--ocsp-must-staple-v2', help='OCSP Must-Staple V2.', action='store_true')
     g2.add_argument('--crl-urls', help='URLs URL for CRL data.', metavar='URLS')
     g2.add_argument('--issuer-urls', help='URLs for issuer cert.', metavar='URLS')
     g2.add_argument('--permit-subtrees', help='Allowed NameConstraints.', metavar='GNAMES')
@@ -1060,6 +1159,7 @@ def setup_args():
     g3.add_argument('--ca-info', help='Filename of CA details (CRT or CSR).', metavar='FN')
     g3.add_argument('--request', help='Filename of certificate request (CSR) to be signed.', metavar='FN')
     g3.add_argument('--days', help='Certificate lifetime in days', type=int)
+    g3.add_argument('--reset', help='Rewrite all info fields.  Default: no.', action='store_true')
 
     g4 = p.add_argument_group('Command "show"',
                               "Show CSR or CRT file contents.  Takes .crt or .csr filenames as arguments.")
@@ -1094,7 +1194,10 @@ def run_sysca(argv):
 def main():
     """Command-line application entry point.
     """
-    return run_sysca(sys.argv[1:])
+    try:
+        return run_sysca(sys.argv[1:])
+    except InvalidCertificate as ex:
+        die(str(ex))
 
 
 if __name__ == '__main__':
