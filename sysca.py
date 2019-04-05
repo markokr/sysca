@@ -3,8 +3,6 @@
 """Certificate tool for sysadmins.
 """
 
-from __future__ import absolute_import, division, print_function, unicode_literals
-
 import argparse
 import ipaddress
 import os.path
@@ -99,9 +97,6 @@ XKU_CODE_TO_OID = {
 
 QUIET = False
 
-if sys.version_info[0] > 2:
-    unicode = str
-
 
 def as_bytes(s):
     """Return byte-string.
@@ -172,7 +167,7 @@ def maybe_parse(val, parse_func, default):
     """
     if val is None:
         return default
-    if isinstance(val, (unicode, str)):
+    if isinstance(val, (bytes, str)):
         return parse_func(val)
     if isinstance(val, dict):
         return val.copy()
