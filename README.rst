@@ -104,10 +104,10 @@ Options:
     Private key file to create request for.  Can be PGP-encrypted.
     Can be password-protected.
 
---password-file FN
+**--password-file FN**
     Password file for private key.  Can be PGP-encrypted.
 
---subject DN
+**--subject DN**
     Subject's DistinguishedName which is X509 Name structure, which is collection
     of key-value pairs.
 
@@ -129,19 +129,19 @@ Options:
 
     Certificate field: Subject_.
 
---CA
+**--CA**
     The certificate will have CA rights - that means it can
     sign other certificates.
 
     Extension: BasicConstraints_.
 
---path-length
+**--path-length**
     Applies only for CA certs - limits how many levels on sub-CAs
     can exist under generated certificate.  Default: 0.
 
     Extension: BasicConstraints_.
 
---san ALT_NAMES
+**--san ALT_NAMES**
     Specify alternative names for subject as list of comma-separated
     strings, that have prefix that describes data type.
 
@@ -165,17 +165,17 @@ Options:
 
 Options useful only when apps support them:
 
---crl-url URLS
+**--crl-url URLS**
     List of URLS where certificate revocation lists can be downloaded.
 
     Extension: CRLDistributionPoints_.
 
---ocsp-url URLS
+**--ocsp-url URLS**
     List of URL for OCSP endpoint where validity can be checked.
 
     Extension: AuthorityInformationAccess_.
 
---issuer-url URLS
+**--issuer-url URLS**
     List of URLS where parent certificate can be downloaded,
     in case the parent CA is not root CA.  Usually sub-CA certificates
     should be provided during key-agreement (TLS).  This setting
@@ -184,57 +184,57 @@ Options useful only when apps support them:
 
     Extension: AuthorityInformationAccess_.
 
---usage USAGE_FLAGS
+**--usage USAGE_FLAGS**
     Comma-separated keywords that set KeyUsage and ExtendedKeyUsage flags.
 
     ExtendedKeyUsage_ flags, none set by default.
 
-        client
+        **client**
             TLS Web Client Authentication.
-        server
+        **server**
             TLS Web Server Authentication.
-        code
+        **code**
             Code signing.
-        email
+        **email**
             E-mail protection.
-        time
+        **time**
             Time stamping.
-        ocsp
+        **ocsp**
             OCSP signing.
-        any
+        **any**
             All other purposes too that are not explicitly mentioned.
 
     KeyUsage_ flags, by default CA certificate will have ``key_cert_sign`` and ``crl_sign`` set,
-        non-CA certificate will have ``digital_signature`` and ``key_encipherment`` set but only
-        if no ``--usage`` was given by user.
+    non-CA certificate will have ``digital_signature`` and ``key_encipherment`` set but only
+    if no ``--usage`` was given by user.
 
-        digital_signature
-            Allowed to sign anything that is not certificate for key.
-        key_agreement
-            Key is allowed to use in key agreement.
-        key_cert_sign
-            Allowed to sign certificates for other keys.
-        crl_sign
-            Allowed to sign certificates for certificate revocation lists (CRLs).
-        key_encipherment
-            Secret keys (either private or symmetric) can be encrypted against
-            public key in certificate.  Does not apply to session keys, but
-            standalone secret keys?
-        data_encipherment
-            Raw data can be encrypted against public key in certificate. [Bad idea.]
-        content_commitment
-            Public key in certificate can be used for signature checking in
-            "seriously-i-mean-it" environment.  [Historical.]
-        encipher_only
-            If ``key_agreement`` is true, this flag limits use only for data encryption.
-        decipher_only
-            If ``key_agreement`` is true, this flag limits use only for data decryption.
+    digital_signature
+        Allowed to sign anything that is not certificate for key.
+    key_agreement
+        Key is allowed to use in key agreement.
+    key_cert_sign
+        Allowed to sign certificates for other keys.
+    crl_sign
+        Allowed to sign certificates for certificate revocation lists (CRLs).
+    key_encipherment
+        Secret keys (either private or symmetric) can be encrypted against
+        public key in certificate.  Does not apply to session keys, but
+        standalone secret keys?
+    data_encipherment
+        Raw data can be encrypted against public key in certificate. [Bad idea.]
+    content_commitment
+        Public key in certificate can be used for signature checking in
+        "seriously-i-mean-it" environment.  [Historical.]
+    encipher_only
+        If ``key_agreement`` is true, this flag limits use only for data encryption.
+    decipher_only
+        If ``key_agreement`` is true, this flag limits use only for data decryption.
 
---exclude-subtrees NAME_PATTERNS
+**--exclude-subtrees NAME_PATTERNS**
     Disallow CA to sign subjects that match patterns.  See ``--permit-subtrees``
     for details.
 
---permit-subtrees NAME_PATTERNS
+**--permit-subtrees NAME_PATTERNS**
     Allow CA to sign subjects that match patterns.
 
 
@@ -271,27 +271,27 @@ if present.
 
 Options:
 
---out CRT_FILE
+**--out CRT_FILE**
     Target file to write certificate to.
 
---days NUM
+**--days NUM**
     Lifetime for certificate in days.
 
---request CSR_FILE
+**--request CSR_FILE**
     Certificate request file generated by **request** command.
 
---ca-key KEY_FILE
+**--ca-key KEY_FILE**
     CA private key file.  Can be PGP-encrypted.
     Can be password-protected.
 
---ca-info CRT_FILE
+**--ca-info CRT_FILE**
     CRT file generated by **request** command.  Issuer CA info
     will be loaded from it.
 
---password-file FN
+**--password-file FN**
     Password file for CA private key.  Can be PGP-encrypted.
 
---reset
+**--reset**
     Do not use any info fields from CSR, reload all info from command line.
     Without it, all info from CSR is kept and command line is ignored.
 
