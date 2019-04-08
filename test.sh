@@ -87,6 +87,19 @@ $sysca sign \
 $sysca show tmp/client.crt \
   | sed -e '/:[0-9A-Fa-f][0-9A-Fa-f]:[0-9A-Fa-f][0-9A-Fa-f]:/d' -e '/^----/q'
 
+$sysca sign \
+  --ca-key tmp/subca.key.gpg \
+  --ca-info tmp/subca.crt \
+  --request tmp/client.csr \
+  --days 300 \
+  --out tmp/client2.crt \
+  --subject '/CN=overwritten/' \
+  --san 'dns:*.overwritten.com' \
+  --reset
+
+$sysca show tmp/client2.crt \
+  | sed -e '/:[0-9A-Fa-f][0-9A-Fa-f]:[0-9A-Fa-f][0-9A-Fa-f]:/d' -e '/^----/q'
+
 ## selfsign
 
 $sysca new-key rsa:4096 --out tmp/selfsigned.key
