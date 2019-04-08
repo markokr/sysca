@@ -11,7 +11,6 @@ be correct in certificate request.
 Features
 --------
 
-- **No interactive data entry.**
 - Simple command-line UI.
 - Good defaults, sets up common extensions automatically.
 - PGP- and password-protected private keys.
@@ -21,7 +20,7 @@ Features
 Dependencies
 ------------
 
-- Python `cryptography`_ module (version >= 1.2).
+- Python `cryptography`_ module (version >= 2.1).
 - (Optional) `gpg`_ command-line tool to decrypt files.
 - (Optional) `openssl`_ command-line tool to show CRT/CSR contents.
 
@@ -299,7 +298,7 @@ Options:
 selfsign
 ~~~~~~~~
 
-This commands takes same arguments as `request` plus `--days NUM`.
+This commands takes same arguments as ``request`` plus ``--days NUM``.
 By default it avoids adding KeyUsage_ and ExtendedKeyUsage_
 as there are no good defaults.
 
@@ -318,22 +317,22 @@ with password-protection.
 
 For each key, different set of PGP keys can be used that can decrypt it::
 
-    $ ./sysca.py new-key | gpg -aes -r "admin@example.com" -r "backup@example.com" > CA.key.gpg
-    $ ./sysca.py new-key | gpg -aes -r "admin@example.com" -r "devops@example.com" > server.key.gpg
+    $ sysca new-key | gpg -aes -r "admin@example.com" -r "backup@example.com" > CA.key.gpg
+    $ sysca new-key | gpg -aes -r "admin@example.com" -r "devops@example.com" > server.key.gpg
 
 Example
 -------
 
 Self-signed CA example::
 
-    $ ./sysca.py new-key | gpg -aes -r "admin@example.com" > TestCA.key.gpg
-    $ ./sysca.py selfsign --key TestCA.key.gpg --subject "/CN=TestCA/O=Gov" --CA > TestCA.crt
+    $ sysca new-key | gpg -aes -r "admin@example.com" > TestCA.key.gpg
+    $ sysca selfsign --key TestCA.key.gpg --subject "/CN=TestCA/O=Gov" --CA > TestCA.crt
 
 Sign server key::
 
-    $ ./sysca.py new-key | gpg -aes -r "admin@example.com" > Server.key.gpg
-    $ ./sysca.py request --key Server.key.gpg --subject "/CN=web.server.com/O=Gov" > Server.csr
-    $ ./sysca.py sign --days 365 --request Server.csr --ca-key TestCA.key.gpg --ca-info TestCA.crt > Server.crt
+    $ sysca new-key | gpg -aes -r "admin@example.com" > Server.key.gpg
+    $ sysca request --key Server.key.gpg --subject "/CN=web.server.com/O=Gov" > Server.csr
+    $ sysca sign --days 365 --request Server.csr --ca-key TestCA.key.gpg --ca-info TestCA.crt > Server.crt
 
 
 Compatibility notes
@@ -347,7 +346,7 @@ extensions that are actually used.
 TODO
 ----
 
-* Allow field overrides during sign?
+* CRL management.
 
 .. _Subject: https://tools.ietf.org/html/rfc5280#section-4.1.2.6
 .. _BasicConstraints: https://tools.ietf.org/html/rfc5280#section-4.2.1.9
