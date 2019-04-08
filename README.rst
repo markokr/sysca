@@ -82,11 +82,11 @@ Available curves for EC: ``secp256r1``, ``secp384r1``,
 
 Options:
 
---password-file FILE
+``--password-file FILE``
     Password will be loaded from file.  Can be PGP-encrypted.
     Resulting private key will be encrypted with this password.
 
---out DST_FN
+``--out DST_FN``
     Target file to write key to.  It's preferable to write to
     stdout and encrypt with GPG.
 
@@ -97,10 +97,10 @@ Create certificate request.
 
 Options:
 
---out CSR_FILE
+**--out CSR_FILE**
     Target file to write CSR to.
 
---key KEY_FILE
+**--key KEY_FILE**
     Private key file to create request for.  Can be PGP-encrypted.
     Can be password-protected.
 
