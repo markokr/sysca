@@ -41,7 +41,8 @@ class InvalidCertificate(ValueError):
     """Invalid input for certificate."""
 
 #
-# Key params
+# Key parameters
+#
 
 MIN_RSA_BITS = 1024
 MAX_RSA_BITS = 8192
@@ -118,7 +119,7 @@ XKU_CODE_TO_OID = {
     'ocsp': ExtendedKeyUsageOID.OCSP_SIGNING,
 }
 
-# minimal KU defaults to add when XKU is given
+# minimal KeyUsage defaults to add when ExtendedKeyUsage is given
 XKU_DEFAULTS = {
     'any': ['digital_signature', 'key_encipherment', 'key_agreement', 'content_commitment', 'data_encipherment', 'key_cert_sign', 'crl_sign'],
     'server': ['digital_signature', 'key_encipherment'], # key_agreement
@@ -173,7 +174,7 @@ def _escape_char(m):
 
 
 def dn_escape(s):
-    """Distinguishedname backslash-escape"""
+    """DistinguishedName backslash-escape"""
     return re.sub(r'[\\/\x00-\x1F]', _escape_char, s)
 
 
@@ -212,7 +213,7 @@ def render_name(name_att_list):
 
 
 def maybe_parse(val, parse_func):
-    """Parse argument value with func if string.
+    """Parse argument value with function if string.
     """
     if val is None:
         return []
@@ -233,15 +234,15 @@ class CertInfo(object):
                  ocsp_nocheck=False, ocsp_must_staple=False, ocsp_must_staple_v2=False,
                  permit_subtrees=None, exclude_subtrees=None,
                  load=None):
-        """Setup up details.
+        """Initialize info object.
 
-        Args:
+        Arguments:
 
             subject
                 dict if strings.
 
             alt_names
-                list of gname strings
+                list of GeneralName strings
 
             ca
                 boolean, isCA
@@ -271,10 +272,10 @@ class CertInfo(object):
                 mark that OCSP status_request_v2 is required
 
             permit_subtrees
-                list of gnames for permitted subtrees
+                list of GeneralNames for permitted subtrees
 
             exclude_subtrees
-                list of gnames for excluded subtrees
+                list of GeneralNames for excluded subtrees
 
             load
                 object to extract from (cert or cert request)
@@ -432,7 +433,7 @@ class CertInfo(object):
         return res
 
     def load_name(self, name_att_list):
-        """Create Name object from subject DN.
+        """Create Name object from subject's DistinguishedName.
         """
         attlist = []
         got = set()
@@ -445,7 +446,7 @@ class CertInfo(object):
         return x509.Name(attlist)
 
     def get_name(self):
-        """Create Name object from subject DN.
+        """Create Name object from subject's DistinguishedName.
         """
         return self.load_name(self.subject)
 
@@ -637,7 +638,7 @@ def get_backend():
 def make_key_usage(digital_signature=False, content_commitment=False, key_encipherment=False,
                   data_encipherment=False, key_agreement=False, key_cert_sign=False,
                   crl_sign=False, encipher_only=False, decipher_only=False):
-    """Default args for KeyUsage.
+    """Default arguments for KeyUsage.
     """
     return x509.KeyUsage(digital_signature=digital_signature, content_commitment=content_commitment,
             key_encipherment=key_encipherment, data_encipherment=data_encipherment,
@@ -652,7 +653,7 @@ def create_x509_req(privkey, subject_info):
     builder = builder.subject_name(subject_info.get_name())
     builder = subject_info.install_extensions(builder)
 
-    # final req
+    # create final request
     req = builder.sign(private_key=privkey, algorithm=SHA256(), backend=get_backend())
     return req
 
@@ -757,7 +758,7 @@ def load_gpg_file(fn):
     if p.returncode != 0:
         die("%s: gpg failed: \n  %s", fn, log)
 
-    # cannot say "you need to check sigs" to gpg...
+    # cannot say "you need to check signatures" to gpg...
     if "Good signature" not in log:
         msg("%s: No signature found", fn)
         if log:
@@ -930,7 +931,7 @@ def newkey_command(args):
 
 
 def info_from_args(args):
-    """Collect command-line args
+    """Collect command-line arguments into CertInfo.
     """
     return CertInfo(
         subject=parse_dn(args.subject),
@@ -971,7 +972,7 @@ def do_sign(subject_csr, issuer_obj, issuer_key, days, path_length, reqInfo, res
     if reset_info:
         subject_info = reset_info
 
-    # Check CA params
+    # Check CA parameters
     if not same_pubkey(subject_csr, issuer_obj):
         if not issuer_info.ca:
             die("Issuer must be CA.")
@@ -979,7 +980,7 @@ def do_sign(subject_csr, issuer_obj, issuer_key, days, path_length, reqInfo, res
             die("Issuer CA is not allowed to sign certs.")
     if subject_info.ca:
         if not same_pubkey(subject_csr, issuer_obj):
-            # not selfsigning, check depth
+            # not self-signing, check depth
             if issuer_info.path_length == 0:
                 die("Issuer cannot sign sub-CAs")
             if issuer_info.path_length - 1 < path_length:
@@ -1017,7 +1018,7 @@ def do_sign(subject_csr, issuer_obj, issuer_key, days, path_length, reqInfo, res
 
 
 def req_command(args):
-    """Load args, create CSR.
+    """Load command-line arguments, create Certificate Signing Request (CSR).
     """
     if args.files:
         die("Unexpected positional arguments")
@@ -1030,14 +1031,14 @@ def req_command(args):
         msg('Request for end-entity cert')
     subject_info.show(msg_show)
 
-    # Load private key, create req
+    # Load private key, create signing request
     key = load_key(args.key, load_password(args.password_file))
     req = create_x509_req(key, subject_info)
     do_output(req_to_pem(req), args, 'req')
 
 
 def sign_command(args):
-    """Load args, output cert.
+    """Load command-line arguments, output cert.
     """
     if args.files:
         die("Unexpected positional arguments")
@@ -1072,7 +1073,7 @@ def sign_command(args):
 
 
 def selfsign_command(args):
-    """Load args, create selfsigned CRT.
+    """Load command-line arguments, create self-signed CRT.
     """
     if args.files:
         die("Unexpected positional arguments")
@@ -1085,10 +1086,11 @@ def selfsign_command(args):
         msg('Request for end-entity cert')
     subject_info.show(msg_show)
 
-    # Load private key, create req
+    # Load private key, create signing request
     key = load_key(args.key, load_password(args.password_file))
     subject_csr = create_x509_req(key, subject_info)
 
+    # sign created request
     cert = do_sign(subject_csr, subject_csr, key, args.days, args.path_length, '<selfsign>')
     do_output(cert_to_pem(cert), args, 'x509')
 
@@ -1169,7 +1171,7 @@ def setup_args():
 
 
 def run_sysca(argv):
-    """Parse args, run command.
+    """Load arguments, select and run command.
     """
     global QUIET
 
