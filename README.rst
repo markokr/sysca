@@ -4,9 +4,7 @@ SysCA - Certificate tool for Sysadmins
 Description
 -----------
 
-Easy-to-use tool for certificate management.  To make data flow simple,
-it does not support metadata rewrite during signing, all data should
-be correct in certificate request.
+Easy-to-use command-line tool for certificate management.
 
 Features
 --------
@@ -60,6 +58,7 @@ Sign certificate signing request::
     sysca sign --ca-key KEY_FILE --ca-info CRT_FILE
                --request CSR_FILE --days NUM
                [--out CRT_FN] [--password-file TXT_FILE]
+               [--reset ...]
 
 Display contents of CSR or CRT file::
 
@@ -82,23 +81,23 @@ Available curves for EC: ``secp256r1``, ``secp384r1``,
 
 Options:
 
-``--password-file FILE``
+**--password-file FILE**
     Password will be loaded from file.  Can be PGP-encrypted.
     Resulting private key will be encrypted with this password.
 
-``--out DST_FN``
+**--out DST_FN**
     Target file to write key to.  It's preferable to write to
     stdout and encrypt with GPG.
 
 request
 ~~~~~~~
 
-Create certificate request.
+Create certificate signing request (CSR).
 
 Options:
 
 **--out CSR_FILE**
-    Target file to write CSR to.
+    Target file to write Certificate Signing Request to.
 
 **--key KEY_FILE**
     Private key file to create request for.  Can be PGP-encrypted.
@@ -166,7 +165,7 @@ Options:
 Options useful only when apps support them:
 
 **--crl-url URLS**
-    List of URLS where certificate revocation lists can be downloaded.
+    List of URLs where certificate revocation lists can be downloaded.
 
     Extension: CRLDistributionPoints_.
 
@@ -189,46 +188,46 @@ Options useful only when apps support them:
 
     ExtendedKeyUsage_ flags, none set by default.
 
-        **client**
+        client
             TLS Web Client Authentication.
-        **server**
+        server
             TLS Web Server Authentication.
-        **code**
+        code
             Code signing.
-        **email**
+        email
             E-mail protection.
-        **time**
+        time
             Time stamping.
-        **ocsp**
+        ocsp
             OCSP signing.
-        **any**
+        any
             All other purposes too that are not explicitly mentioned.
 
     KeyUsage_ flags, by default CA certificate will have ``key_cert_sign`` and ``crl_sign`` set,
     non-CA certificate will have ``digital_signature`` and ``key_encipherment`` set but only
     if no ``--usage`` was given by user.
 
-    digital_signature
-        Allowed to sign anything that is not certificate for key.
-    key_agreement
-        Key is allowed to use in key agreement.
-    key_cert_sign
-        Allowed to sign certificates for other keys.
-    crl_sign
-        Allowed to sign certificates for certificate revocation lists (CRLs).
-    key_encipherment
-        Secret keys (either private or symmetric) can be encrypted against
-        public key in certificate.  Does not apply to session keys, but
-        standalone secret keys?
-    data_encipherment
-        Raw data can be encrypted against public key in certificate. [Bad idea.]
-    content_commitment
-        Public key in certificate can be used for signature checking in
-        "seriously-i-mean-it" environment.  [Historical.]
-    encipher_only
-        If ``key_agreement`` is true, this flag limits use only for data encryption.
-    decipher_only
-        If ``key_agreement`` is true, this flag limits use only for data decryption.
+        digital_signature
+            Allowed to sign anything that is not certificate for key.
+        key_agreement
+            Key is allowed to use in key agreement.
+        key_cert_sign
+            Allowed to sign certificates for other keys.
+        crl_sign
+            Allowed to sign certificates for certificate revocation lists (CRLs).
+        key_encipherment
+            Secret keys (either private or symmetric) can be encrypted against
+            public key in certificate.  Does not apply to session keys, but
+            standalone secret keys?
+        data_encipherment
+            Raw data can be encrypted against public key in certificate. [Bad idea.]
+        content_commitment
+            Public key in certificate can be used for signature checking in
+            "seriously-i-mean-it" environment.  [Historical.]
+        encipher_only
+            If ``key_agreement`` is true, this flag limits use only for data encryption.
+        decipher_only
+            If ``key_agreement`` is true, this flag limits use only for data decryption.
 
 **--exclude-subtrees NAME_PATTERNS**
     Disallow CA to sign subjects that match patterns.  See ``--permit-subtrees``
@@ -236,7 +235,6 @@ Options useful only when apps support them:
 
 **--permit-subtrees NAME_PATTERNS**
     Allow CA to sign subjects that match patterns.
-
 
     Specify patters for subject as list of comma-separated
     strings, that have prefix that describes data type.
