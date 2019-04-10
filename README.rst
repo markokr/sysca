@@ -164,25 +164,6 @@ Options:
 
 Options useful only when apps support them:
 
-**--crl-url URLS**
-    List of URLs where certificate revocation lists can be downloaded.
-
-    Extension: CRLDistributionPoints_.
-
-**--ocsp-url URLS**
-    List of URL for OCSP endpoint where validity can be checked.
-
-    Extension: AuthorityInformationAccess_.
-
-**--issuer-url URLS**
-    List of URLS where parent certificate can be downloaded,
-    in case the parent CA is not root CA.  Usually sub-CA certificates
-    should be provided during key-agreement (TLS).  This setting
-    is for situations where this cannot happen or for fallback
-    for badly-configured TLS servers.
-
-    Extension: AuthorityInformationAccess_.
-
 **--usage USAGE_FLAGS**
     Comma-separated keywords that set KeyUsage and ExtendedKeyUsage flags.
 
@@ -228,6 +209,46 @@ Options useful only when apps support them:
             If ``key_agreement`` is true, this flag limits use only for data encryption.
         decipher_only
             If ``key_agreement`` is true, this flag limits use only for data decryption.
+
+**--ocsp-nocheck**
+
+    Disable OCSP checking for this certificate.  Used for certificates that
+    sign OCSP status replies.
+
+    Extension: OCSPNoCheck_.
+
+**--ocsp-must-staple**
+
+    Requires that TLS handshake must be done with stapled OCSP response
+    using ``status_request`` protocol.
+
+    Extension: OCSPMustStaple_.
+
+**--ocsp-must-staple-v2**
+
+    Requires that TLS handshake must be done with stapled OCSP response
+    using ``status_request_v2`` protocol.
+
+    Extension: OCSPMustStapleV2_.
+
+**--crl-url URLS**
+    List of URLs where certificate revocation lists can be downloaded.
+
+    Extension: CRLDistributionPoints_.
+
+**--ocsp-url URLS**
+    List of URL for OCSP endpoint where validity can be checked.
+
+    Extension: AuthorityInformationAccess_.
+
+**--issuer-url URLS**
+    List of URLS where parent certificate can be downloaded,
+    in case the parent CA is not root CA.  Usually sub-CA certificates
+    should be provided during key-agreement (TLS).  This setting
+    is for situations where this cannot happen or for fallback
+    for badly-configured TLS servers.
+
+    Extension: AuthorityInformationAccess_.
 
 **--exclude-subtrees NAME_PATTERNS**
     Disallow CA to sign subjects that match patterns.  See ``--permit-subtrees``
@@ -358,3 +379,7 @@ TODO
 .. _AuthorityKeyIdentifier: https://tools.ietf.org/html/rfc5280#section-4.2.1.1
 .. _SubjectKeyIdentifier: https://tools.ietf.org/html/rfc5280#section-4.2.1.2
 .. _addr-spec: https://tools.ietf.org/html/rfc5322#section-3.4.1
+.. _OCSPNoCheck: https://tools.ietf.org/html/rfc6960
+.. _OCSPMustStaple: https://tools.ietf.org/html/rfc7633
+.. _OCSPMustStapleV2: https://tools.ietf.org/html/rfc7633
+
