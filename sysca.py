@@ -1,6 +1,8 @@
 #! /usr/bin/env python3
 
 """Certificate tool for sysadmins.
+
+Mostly follows RFC5280 profile.
 """
 
 import argparse
@@ -21,19 +23,20 @@ from cryptography.hazmat.primitives.serialization import (
 
 from cryptography import x509
 from cryptography.x509.oid import (
-    NameOID, ExtendedKeyUsageOID,
+    NameOID, ExtendedKeyUsageOID, CRLEntryExtensionOID,
     ExtensionOID, AuthorityInformationAccessOID)
 
 
 __version__ = '1.1'
 
 __all__ = [
-    'CertInfo', 'InvalidCertificate',
+    'CertInfo', 'RevCertInfo', 'CRLInfo',
+    'InvalidCertificate',
+    'load_key', 'load_req', 'load_cert', 'load_crl',
+    'key_to_pem', 'cert_to_pem', 'req_to_pem', 'crl_to_pem',
     'new_ec_key', 'new_rsa_key',
-    'load_key', 'load_req', 'load_cert',
     'load_gpg_file', 'load_password',
-    'create_x509_req', 'create_x509_cert',
-    'key_to_pem', 'cert_to_pem', 'req_to_pem',
+    'create_x509_req', 'create_x509_cert', 'create_x509_crl',
     'run_sysca'
 ]
 
@@ -145,6 +148,22 @@ NONCA_DEFAULTS = {
     'key_encipherment': True,
 }
 
+# CRL reason
+CRL_REASON = {
+    'unspecified': x509.ReasonFlags.unspecified,
+    'key_compromise': x509.ReasonFlags.key_compromise,
+    'ca_compromise': x509.ReasonFlags.ca_compromise,
+    'affiliation_changed': x509.ReasonFlags.affiliation_changed,
+    'superseded': x509.ReasonFlags.superseded,
+    'cessation_of_operation': x509.ReasonFlags.cessation_of_operation,
+    'certificate_hold': x509.ReasonFlags.certificate_hold,
+    'privilege_withdrawn': x509.ReasonFlags.privilege_withdrawn,
+    'aa_compromise': x509.ReasonFlags.aa_compromise,
+    'remove_from_crl': x509.ReasonFlags.remove_from_crl,
+}
+
+CRL_REASON_MAP = {v: k for k, v in CRL_REASON.items()}
+
 QUIET = False
 
 
@@ -162,6 +181,31 @@ def as_unicode(s, errs='strict'):
     if not isinstance(s, bytes):
         return s
     return s.decode('utf8', errs)
+
+
+def serial_str(snum):
+    """Format certificate serial number as string.
+    """
+    s = '%x' % snum
+    s = '0'*(len(s)&1) + s
+    s = re.sub(r'..', r':\g<0>', s).strip(':')
+    return s
+
+
+def load_number(sval):
+    if re.match(r'^[0-9a-f]+(:[0-9a-f]+)+$', sval, re.I):
+        return int(sval.replace(':', ''), 16)
+    if re.match(r'^[0-9a-f]+(-[0-9a-f]+)+$', sval, re.I):
+        return int(sval.replace('-', ''), 16)
+    if re.match(r'^[0-9]+$', sval):
+        return int(sval, 10)
+    raise ValueError("Invalid number: %r" % sval)
+
+
+def load_date(sval):
+    if re.match(r'^\d\d\d\d-\d\d-\d\d$', sval):
+        return datetime.strptime(sval, '%Y-%m-%d')
+    raise ValueError("Invalid date: %r" % sval)
 
 
 def _escape_char(m):
@@ -182,6 +226,15 @@ def list_escape(s):
     """Escape value for comma-separated list
     """
     return re.sub(r'[\\,]', _escape_char, s)
+
+
+def show_list(desc, lst, writeln):
+    """Print out list field.
+    """
+    if not lst:
+        return
+    val = ', '.join([list_escape(v) for v in lst])
+    writeln("%s: %s" % (desc, val))
 
 
 def _unescape_char(m):
@@ -226,13 +279,242 @@ def maybe_parse(val, parse_func):
     return val
 
 
-class CertInfo(object):
+def loop_escaped(val, c):
+    """Parse list of strings, separated by c.
+    """
+    if not val:
+        val = ''
+    val = as_unicode(val)
+    rc = re.compile(r'([^%s\\]|\\.)*' % re.escape(c))
+    pos = 0
+    while pos < len(val):
+        if val[pos] == c:
+            pos += 1
+            continue
+        m = rc.match(val, pos)
+        if not m:
+            raise Exception('rx bug')
+        pos = m.end()
+        yield unescape(m.group(0))
+
+
+def parse_list(slist):
+    """Parse comma-separated list to strings.
+    """
+    res = []
+    for v in loop_escaped(slist, ','):
+        v = v.strip()
+        if v:
+            res.append(v)
+    return res
+
+
+def parse_dn(dnstr):
+    """Parse openssl-style /-separated list to dict.
+    """
+    res = []
+    for part in loop_escaped(dnstr, '/'):
+        part = part.strip()
+        if not part:
+            continue
+        if '=' not in part:
+            raise InvalidCertificate("Need k=v in Name string")
+        k, v = part.split('=', 1)
+        res.append((k.strip(), v.strip()))
+    return res
+
+
+def same_pubkey(o1, o2):
+    """Compare public keys.
+    """
+    fmt = PublicFormat.SubjectPublicKeyInfo
+    p1 = o1.public_key().public_bytes(Encoding.PEM, fmt)
+    p2 = o2.public_key().public_bytes(Encoding.PEM, fmt)
+    return p1 == p2
+
+
+def get_backend():
+    """Returns backend to use.
+    """
+    from cryptography.hazmat.backends import default_backend
+    return default_backend()
+
+
+def new_ec_key(name='secp256r1'):
+    """New Elliptic Curve key
+    """
+    if name not in EC_CURVES:
+        raise ValueError('Unknown curve')
+    return ec.generate_private_key(curve=EC_CURVES[name], backend=get_backend())
+
+
+def new_rsa_key(bits=2048):
+    """New RSA key.
+    """
+    if bits < MIN_RSA_BITS or bits > MAX_RSA_BITS:
+        raise ValueError('Bad value for bits')
+    return rsa.generate_private_key(key_size=bits, public_exponent=65537, backend=get_backend())
+
+
+#
+# Converters
+#
+
+def extract_name(name):
+    """Convert Name object to shortcut-dict.
+    """
+    if name is None:
+        return None
+    name_oid2code_map = {v: k for k, v in DN_CODE_TO_OID.items()}
+    res = []
+    for att in name:
+        if att.oid not in name_oid2code_map:
+            raise InvalidCertificate("Unsupported RDN: %s" % (att,))
+        desc = name_oid2code_map[att.oid]
+        val = as_unicode(att.value)
+        res.append((desc, val))
+    return res
+
+
+def extract_gnames(ext_name_list):
+    """Convert list of GeneralNames to list of prefixed strings.
+    """
+    if ext_name_list is None:
+        return None
+    res = []
+    for gn in ext_name_list:
+        if isinstance(gn, x509.RFC822Name):
+            res.append('email:' + as_unicode(gn.value))
+        elif isinstance(gn, x509.DNSName):
+            res.append('dns:' + as_unicode(gn.value))
+        elif isinstance(gn, x509.UniformResourceIdentifier):
+            res.append('uri:' + as_unicode(gn.value))
+        elif isinstance(gn, x509.IPAddress):
+            res.append('ip:' + str(gn.value))
+        elif isinstance(gn, x509.DirectoryName):
+            val = extract_name(gn.value)
+            res.append('dn:' + render_name(val))
+        else:
+            raise InvalidCertificate("Unsupported subjectAltName type: %s" % (gn,))
+    return res
+
+
+def load_name(name_att_list):
+    """Create Name object from subject's DistinguishedName.
+    """
+    attlist = []
+    got = set()
+    for k, v in name_att_list:
+        if k in got and k not in DN_ALLOW_MULTIPLE:
+            raise InvalidCertificate("Multiple Name keys not allowed: %s" % (k,))
+        oid = DN_CODE_TO_OID[k]
+        n = x509.NameAttribute(oid, as_unicode(v))
+        attlist.append(n)
+    return x509.Name(attlist)
+
+
+def load_rel_name(name_att_list):
+    """Create Name object from subject's DistinguishedName.
+    """
+    attlist = []
+    got = set()
+    for k, v in name_att_list:
+        if k in got and k not in DN_ALLOW_MULTIPLE:
+            raise InvalidCertificate("Multiple Name keys not allowed: %s" % (k,))
+        oid = DN_CODE_TO_OID[k]
+        n = x509.NameAttribute(oid, as_unicode(v))
+        attlist.append(n)
+    return x509.RelativeDistinguishedName(attlist)
+
+
+def load_gnames(gname_list):
+    """Converts list of prefixed strings to GeneralName list.
+    """
+    gnames = []
+    for alt in gname_list:
+        if ':' not in alt:
+            raise InvalidCertificate("Invalid gname: %s" % (alt,))
+        t, val = alt.split(':', 1)
+        t = t.lower().strip()
+        val = val.strip()
+        if t == 'dn':
+            gn = x509.DirectoryName(load_name(parse_dn(val)))
+        elif t == 'dns':
+            gn = x509.DNSName(val)
+        elif t == 'email':
+            gn = x509.RFC822Name(val)
+        elif t == 'uri':
+            gn = x509.UniformResourceIdentifier(val)
+        elif t == 'ip':
+            if val.find(':') >= 0:
+                gn = x509.IPAddress(ipaddress.IPv6Address(val))
+            else:
+                gn = x509.IPAddress(ipaddress.IPv4Address(val))
+        elif t == 'dn':
+            gn = x509.DirectoryName(load_name(parse_dn(val)))
+        elif t == 'net':
+            if val.find(':') >= 0:
+                gn = x509.IPAddress(ipaddress.IPv6Network(val))
+            else:
+                gn = x509.IPAddress(ipaddress.IPv4Network(val))
+        else:
+            raise InvalidCertificate('Invalid GeneralName: ' + alt)
+        gnames.append(gn)
+    return gnames
+
+
+def make_key_usage(digital_signature=False, content_commitment=False, key_encipherment=False,
+                  data_encipherment=False, key_agreement=False, key_cert_sign=False,
+                  crl_sign=False, encipher_only=False, decipher_only=False):
+    """Default arguments for KeyUsage.
+    """
+    return x509.KeyUsage(digital_signature=digital_signature, content_commitment=content_commitment,
+            key_encipherment=key_encipherment, data_encipherment=data_encipherment,
+            key_agreement=key_agreement, key_cert_sign=key_cert_sign, crl_sign=crl_sign,
+            encipher_only=encipher_only, decipher_only=decipher_only)
+
+
+
+def key_to_pem(key, password=None):
+    """Serialize key in PEM format, optionally encrypted.
+    """
+    if password:
+        enc = BestAvailableEncryption(as_bytes(password))
+    else:
+        enc = NoEncryption()
+    return key.private_bytes(Encoding.PEM, PrivateFormat.PKCS8, enc)
+
+
+def cert_to_pem(cert):
+    """Serialize certificate in PEM format.
+    """
+    return cert.public_bytes(Encoding.PEM)
+
+
+def req_to_pem(req):
+    """Serialize certificate request in PEM format.
+    """
+    return req.public_bytes(Encoding.PEM)
+
+
+def crl_to_pem(crl):
+    """Serialize certificate revocation list in PEM format.
+    """
+    return crl.public_bytes(Encoding.PEM)
+
+
+
+#
+# Info objects
+#
+
+class CertInfo:
     """Container for certificate fields.
     """
     def __init__(self, subject=None, alt_names=None, ca=False, path_length=0,
                  usage=None, ocsp_urls=None, crl_urls=None, issuer_urls=None,
                  ocsp_nocheck=False, ocsp_must_staple=False, ocsp_must_staple_v2=False,
-                 permit_subtrees=None, exclude_subtrees=None,
+                 permit_subtrees=None, exclude_subtrees=None, inhibit_any=None,
                  load=None):
         """Initialize info object.
 
@@ -285,6 +567,7 @@ class CertInfo(object):
         self.path_length = path_length
         self.subject = maybe_parse(subject, parse_dn)
         self.san = maybe_parse(alt_names, parse_list)
+        self.issuer_san = None
         self.usage = maybe_parse(usage, parse_list)
         self.ocsp_urls = maybe_parse(ocsp_urls, parse_list)
         self.crl_urls = maybe_parse(crl_urls, parse_list)
@@ -294,6 +577,9 @@ class CertInfo(object):
         self.ocsp_nocheck = ocsp_nocheck
         self.ocsp_must_staple = ocsp_must_staple
         self.ocsp_must_staple_v2 = ocsp_must_staple_v2
+        self.version = None
+        self.serial_number = None
+        self.inhibit_any = inhibit_any
 
         if self.path_length < 0:
             self.path_length = None
@@ -304,7 +590,20 @@ class CertInfo(object):
     def load_from_existing(self, obj):
         """Load certificate info from existing certificate or certificate request.
         """
-        self.subject = self.extract_name(obj.subject)
+
+        if isinstance(obj, x509.Certificate):
+            self.serial_number = obj.serial_number
+            if obj.version == x509.Version.v1:
+                self.version = 1
+            elif obj.version == x509.Version.v3:
+                self.version = 3
+        elif isinstance(obj, x509.CertificateSigningRequest):
+            self.serial_number = None
+            self.version = None
+        else:
+            raise InvalidCertificate('Invalid obj type: %s' % type(obj))
+
+        self.subject = extract_name(obj.subject)
 
         for ext in obj.extensions:
             crit = ext.critical
@@ -321,13 +620,15 @@ class CertInfo(object):
                     raise InvalidCertificate("KEY_USAGE must be critical")
                 self.usage += self.extract_key_usage(extobj)
             elif ext.oid == ExtensionOID.SUBJECT_ALTERNATIVE_NAME:
-                self.san = self.extract_gnames(extobj)
+                self.san = extract_gnames(extobj)
+            elif ext.oid == ExtensionOID.ISSUER_ALTERNATIVE_NAME:
+                self.issuer_san = extract_gnames(extobj)
             elif ext.oid == ExtensionOID.EXTENDED_KEY_USAGE:
                 self.usage += self.extract_xkey_usage(extobj)
             elif ext.oid == ExtensionOID.AUTHORITY_INFORMATION_ACCESS:
                 for ad in extobj:
                     if not isinstance(ad.access_location, x509.UniformResourceIdentifier):
-                        InvalidCertificate("Unsupported access_location: %s" % (ad.access_location,))
+                        raise InvalidCertificate("Unsupported access_location: %s" % (ad.access_location,))
                     url = as_unicode(ad.access_location.value)
 
                     if ad.access_method == AuthorityInformationAccessOID.CA_ISSUERS:
@@ -345,14 +646,14 @@ class CertInfo(object):
                     if dp.reasons:
                         raise InvalidCertificate("DistributionPoint.reasons not supported")
 
-                    for gn in self.extract_gnames(dp.full_name):
+                    for gn in extract_gnames(dp.full_name):
                         if gn.startswith('uri:'):
                             self.crl_urls.append(gn[4:])
                         else:
                             raise InvalidCertificate("Unsupported DistributionPoint: %s" % (gn,))
             elif ext.oid == ExtensionOID.NAME_CONSTRAINTS:
-                self.permit_subtrees = self.extract_gnames(extobj.permitted_subtrees)
-                self.exclude_subtrees = self.extract_gnames(extobj.excluded_subtrees)
+                self.permit_subtrees = extract_gnames(extobj.permitted_subtrees)
+                self.exclude_subtrees = extract_gnames(extobj.excluded_subtrees)
             elif ext.oid == ExtensionOID.SUBJECT_KEY_IDENTIFIER:
                 pass
             elif ext.oid == ExtensionOID.AUTHORITY_KEY_IDENTIFIER:
@@ -367,6 +668,8 @@ class CertInfo(object):
                         self.ocsp_must_staple_v2 = True
                     else:
                         raise InvalidCertificate("Unsupported TLSFeature: %r" % (tls_feature_code,))
+            elif ext.oid == ExtensionOID.INHIBIT_ANY_POLICY:
+                self.inhibit_any = extobj.skip_certs
             else:
                 raise InvalidCertificate("Unsupported extension in CSR: %s" % (ext,))
 
@@ -399,114 +702,33 @@ class CertInfo(object):
                 res.append(k)
         return res
 
-    def extract_name(self, name):
-        """Convert Name object to shortcut-dict.
-        """
-        name_oid2code_map = {v: k for k, v in DN_CODE_TO_OID.items()}
-        res = []
-        for att in name:
-            if att.oid not in name_oid2code_map:
-                raise InvalidCertificate("Unsupported RDN: %s" % (att,))
-            desc = name_oid2code_map[att.oid]
-            val = as_unicode(att.value)
-            res.append((desc, val))
-        return res
-
-    def extract_gnames(self, ext):
-        """Convert list of GeneralNames to list of prefixed strings.
-        """
-        res = []
-        for gn in ext:
-            if isinstance(gn, x509.RFC822Name):
-                res.append('email:' + as_unicode(gn.value))
-            elif isinstance(gn, x509.DNSName):
-                res.append('dns:' + as_unicode(gn.value))
-            elif isinstance(gn, x509.UniformResourceIdentifier):
-                res.append('uri:' + as_unicode(gn.value))
-            elif isinstance(gn, x509.IPAddress):
-                res.append('ip:' + str(gn.value))
-            elif isinstance(gn, x509.DirectoryName):
-                val = self.extract_name(gn.value)
-                res.append('dn:' + render_name(val))
-            else:
-                raise InvalidCertificate("Unsupported subjectAltName type: %s" % (gn,))
-        return res
-
-    def load_name(self, name_att_list):
-        """Create Name object from subject's DistinguishedName.
-        """
-        attlist = []
-        got = set()
-        for k, v in name_att_list:
-            if k in got and k not in DN_ALLOW_MULTIPLE:
-                raise InvalidCertificate("Multiple Name keys not allowed: %s" % (k,))
-            oid = DN_CODE_TO_OID[k]
-            n = x509.NameAttribute(oid, as_unicode(v))
-            attlist.append(n)
-        return x509.Name(attlist)
-
     def get_name(self):
         """Create Name object from subject's DistinguishedName.
         """
-        return self.load_name(self.subject)
-
-    def load_gnames(self, gname_list):
-        """Converts list of prefixed strings to GeneralName list.
-        """
-        gnames = []
-        for alt in gname_list:
-            if ':' not in alt:
-                raise InvalidCertificate("Invalid gname: %s" % (alt,))
-            t, val = alt.split(':', 1)
-            t = t.lower().strip()
-            val = val.strip()
-            if t == 'dn':
-                gn = x509.DirectoryName(self.load_name(parse_dn(val)))
-            elif t == 'dns':
-                gn = x509.DNSName(val)
-            elif t == 'email':
-                gn = x509.RFC822Name(val)
-            elif t == 'uri':
-                gn = x509.UniformResourceIdentifier(val)
-            elif t == 'ip':
-                if val.find(':') >= 0:
-                    gn = x509.IPAddress(ipaddress.IPv6Address(val))
-                else:
-                    gn = x509.IPAddress(ipaddress.IPv4Address(val))
-            elif t == 'dn':
-                gn = x509.DirectoryName(self.load_name(parse_dn(val)))
-            elif t == 'net':
-                if val.find(':') >= 0:
-                    gn = x509.IPAddress(ipaddress.IPv6Network(val))
-                else:
-                    gn = x509.IPAddress(ipaddress.IPv4Network(val))
-            else:
-                raise Exception('Invalid GeneralName: ' + alt)
-            gnames.append(gn)
-        return gnames
+        return load_name(self.subject)
 
     def get_san_gnames(self):
         """Return SubjectAltNames as GeneralNames
         """
-        return self.load_gnames(self.san)
+        return load_gnames(self.san)
 
     def get_ocsp_gnames(self):
         """Return ocsp_urls as GeneralNames
         """
         urls = ['uri:' + u for u in self.ocsp_urls]
-        return self.load_gnames(urls)
+        return load_gnames(urls)
 
     def get_issuer_urls_gnames(self):
         """Return issuer_urls as GeneralNames
         """
         urls = ['uri:' + u for u in self.issuer_urls]
-        return self.load_gnames(urls)
+        return load_gnames(urls)
 
     def get_crl_gnames(self):
         """Return crl_urls as GeneralNames
         """
         urls = ['uri:' + u for u in self.crl_urls]
-        return self.load_gnames(urls)
+        return load_gnames(urls)
 
     def get_tls_features(self):
         """Return TLS Feature list
@@ -553,9 +775,11 @@ class CertInfo(object):
             builder = builder.add_extension(ext, critical=True)
 
         # NameConstraints, critical
-        if (self.exclude_subtrees or self.permit_subtrees) and self.ca:
-            allow = self.load_gnames(self.permit_subtrees) or None
-            disallow = self.load_gnames(self.exclude_subtrees) or None
+        if self.exclude_subtrees or self.permit_subtrees:
+            if not self.ca:
+                raise InvalidCertificate("NameConstraints applies only to CA certificates")
+            allow = load_gnames(self.permit_subtrees) or None
+            disallow = load_gnames(self.exclude_subtrees) or None
             ext = x509.NameConstraints(allow, disallow)
             builder = builder.add_extension(ext, critical=True)
 
@@ -593,31 +817,81 @@ class CertInfo(object):
             ext = x509.TLSFeature(tls_features)
             builder = builder.add_extension(ext, critical=False)
 
+        # InhibitAnyPolicy
+        if self.inhibit_any is not None:
+            if not self.ca:
+                raise InvalidCertificate("InhibitAnyPolicy applies only to CA certificates")
+            ext = x509.InhibitAnyPolicy(self.inhibit_any)
+            builder = builder.add_extension(ext, critical=True)
+
         # configured builder
         return builder
 
-    def show_list(self, desc, lst, writeln):
-        """Print out list field.
+    def generate_request(self, privkey):
+        """Create x509.CertificateSigningRequest based on current info.
         """
-        if not lst:
-            return
-        val = ', '.join([list_escape(v) for v in lst])
-        writeln("%s: %s" % (desc, val))
+        builder = x509.CertificateSigningRequestBuilder()
+        builder = builder.subject_name(self.get_name())
+        builder = self.install_extensions(builder)
+
+        # create final request
+        req = builder.sign(private_key=privkey, algorithm=SHA256(), backend=get_backend())
+        return req
+
+    def generate_certificate(self, subject_pubkey, issuer_info, issuer_privkey, days):
+        """Create x509.Certificate based on current info.
+        """
+        dt_now = datetime.utcnow()
+        dt_start = dt_now - timedelta(hours=1)
+        dt_end = dt_now + timedelta(days=days)
+
+        self.serial_number = int(uuid.uuid4())
+
+        builder = (x509.CertificateBuilder()
+            .subject_name(self.get_name())
+            .issuer_name(issuer_info.get_name())
+            .not_valid_before(dt_start)
+            .not_valid_after(dt_end)
+            .serial_number(self.serial_number)
+            .public_key(subject_pubkey))
+
+        builder = self.install_extensions(builder)
+
+        # SubjectKeyIdentifier
+        ext = x509.SubjectKeyIdentifier.from_public_key(subject_pubkey)
+        builder = builder.add_extension(ext, critical=False)
+
+        # AuthorityKeyIdentifier
+        ext = x509.AuthorityKeyIdentifier.from_issuer_public_key(issuer_privkey.public_key())
+        builder = builder.add_extension(ext, critical=False)
+
+        # IssuerAlternativeName
+        if issuer_info.san:
+            ext = x509.IssuerAlternativeName(issuer_info.get_san_gnames())
+            builder = builder.add_extension(ext, critical=False)
+
+        # final cert
+        cert = builder.sign(private_key=issuer_privkey, algorithm=SHA256(), backend=get_backend())
+        return cert
 
     def show(self, writeln):
         """Print out details.
         """
+        if self.version is not None:
+            writeln('Version: %s' % self.version)
+        if self.serial_number is not None:
+            writeln('Serial: %s' % serial_str(self.serial_number))
         if self.subject:
             writeln('Subject: %s' % render_name(self.subject))
-        self.show_list('SAN', self.san, writeln)
-        self.show_list('Usage', self.usage, writeln)
-        self.show_list('OCSP URLs', self.ocsp_urls, writeln)
-        self.show_list('Issuer URLs', self.issuer_urls, writeln)
-        self.show_list('CRL URLs', self.crl_urls, writeln)
-        self.show_list('Permit', self.permit_subtrees, writeln)
-        self.show_list('Exclude', self.exclude_subtrees, writeln)
+        show_list('SAN', self.san, writeln)
+        show_list('Usage', self.usage, writeln)
+        show_list('OCSP URLs', self.ocsp_urls, writeln)
+        show_list('Issuer URLs', self.issuer_urls, writeln)
+        show_list('CRL URLs', self.crl_urls, writeln)
+        show_list('Permit', self.permit_subtrees, writeln)
+        show_list('Exclude', self.exclude_subtrees, writeln)
         if self.ocsp_nocheck:
-            self.show_list('OCSP NoCheck', ['True'], writeln)
+            show_list('OCSP NoCheck', ['True'], writeln)
 
         tls_features = []
         if self.ocsp_must_staple:
@@ -625,120 +899,315 @@ class CertInfo(object):
         if self.ocsp_must_staple_v2:
             tls_features.append('status_request_v2')
         if tls_features:
-            self.show_list('TLS Features', tls_features, writeln)
+            show_list('TLS Features', tls_features, writeln)
+        if self.inhibit_any is not None:
+            writeln('Inhibit ANY policy: skip_certs=%r' % self.inhibit_any)
 
 
-def get_backend():
-    """Returns backend to use.
+class RevCertInfo:
+    """Container for revoced certificate info.
     """
-    from cryptography.hazmat.backends import default_backend
-    return default_backend()
+    def __init__(self, serial_number=None, reason=None, revocation_date=None,
+                 invalidity_date=None, issuer_gnames=None, load=None):
+        self.revocation_date = None
+        self.serial_number = None
+        self.reason = None              # CRLReason / ReasonFlags
+        self.invalidity_date = None     # InvalidityDate
+        self.issuer_gnames = None       # CertificateIssuer
 
+        if load is None:
+            self.serial_number = serial_number
+            self.reason = reason
+            self.revocation_date = revocation_date
+            self.invalidity_date = invalidity_date
+        else:
+            self.load_from_existing(load)
 
-def make_key_usage(digital_signature=False, content_commitment=False, key_encipherment=False,
-                  data_encipherment=False, key_agreement=False, key_cert_sign=False,
-                  crl_sign=False, encipher_only=False, decipher_only=False):
-    """Default arguments for KeyUsage.
+    def generate_rcert(self):
+        """Return x509.RevokedCertificate
+        """
+        if self.revocation_date is None:
+            self.revocation_date = datetime.utcnow()
+
+        builder = x509.RevokedCertificateBuilder()
+        builder = builder.serial_number(self.serial_number)
+        builder = builder.revocation_date(self.revocation_date)
+        builder = self.install_extensions(builder)
+        return builder.build(get_backend())
+
+    def install_extensions(self, builder):
+        """Install additional extensions to builder.
+        """
+        if self.reason is not None:
+            code = CRL_REASON[self.reason]
+            if code != x509.ReasonFlags.unspecified:
+                ext = x509.CRLReason(code)
+                builder = builder.add_extension(ext, critical=False)
+
+        if self.invalidity_date is not None:
+            ext = x509.InvalidityDate(self.invalidity_date)
+            builder = builder.add_extension(ext, critical=False)
+
+        if self.issuer_gnames is not None:
+            glist = load_gnames(self.issuer_gnames)
+            ext = x509.CertificateIssuer(glist)
+            builder = builder.add_extension(ext, critical=True)
+
+        return builder
+
+    def load_from_existing(self, obj):
+        """Load data from x509.RevokedCertificate
+        """
+        if not isinstance(obj, x509.RevokedCertificate):
+            raise InvalidCertificate("Expect RevokedCertificate, got %s" % type(obj))
+
+        self.serial_number = obj.serial_number
+        self.revocation_date = obj.revocation_date
+
+        for ext in obj.extensions:
+            crit = ext.critical
+            extobj = ext.value
+            if ext.oid == CRLEntryExtensionOID.CRL_REASON:
+                self.reason = CRL_REASON_MAP.get(extobj.reason)
+            elif ext.oid == CRLEntryExtensionOID.INVALIDITY_DATE:
+                self.invalidity_date = extobj.invalidity_date
+            elif ext.oid == CRLEntryExtensionOID.CERTIFICATE_ISSUER:
+                self.issuer_gnames = extract_gnames(extobj)
+            else:
+                raise InvalidCertificate("Unsupported extension in CRL: %s" % (ext,))
+
+    def show(self, writeln):
+        """Print info.
+        """
+        writeln('Revoked certificate:')
+        if self.serial_number is not None:
+            writeln('  Serial: %s' % serial_str(self.serial_number))
+        if self.revocation_date is not None:
+            writeln('  Revocation Date: %s' % self.revocation_date.isoformat(' '))
+        if self.invalidity_date is not None:
+            writeln('  Invalidity Date: %s' % self.invalidity_date.isoformat(' '))
+        if self.reason is not None:
+            writeln('  Reason: %s' % self.reason)
+        show_list('Issuer GNames', self.issuer_gnames, writeln)
+
+class CRLInfo:
+    """Container for certificate revocation object info.
     """
-    return x509.KeyUsage(digital_signature=digital_signature, content_commitment=content_commitment,
-            key_encipherment=key_encipherment, data_encipherment=data_encipherment,
-            key_agreement=key_agreement, key_cert_sign=key_cert_sign, crl_sign=crl_sign,
-            encipher_only=encipher_only, decipher_only=decipher_only)
+    def __init__(self, revoked_list=None, load=None):
+        """Initialize info object.
+        """
+        self.revoked_list = revoked_list or []
+        self.issuer_name = None
+        self.issuer_san = None
+        self.auth_key_id = None
+        self.next_update = None
+        self.last_update = None
+        self.crl_number = None
+        self.delta_crl_number = None
 
+        # IssuingDistributionPoint
+        self.crl_scope = 'all'      # all,user,ca,attr
+        self.indirect_crl = False
+        self.only_some_reasons = frozenset()
+        self.full_methods = None
+        self.relative_methods = None
 
-def create_x509_req(privkey, subject_info):
-    """Main CSR creation code.
-    """
-    builder = x509.CertificateSigningRequestBuilder()
-    builder = builder.subject_name(subject_info.get_name())
-    builder = subject_info.install_extensions(builder)
+        # Freshest CRL (a.k.a. Delta CRL Distribution Point)
 
-    # create final request
-    req = builder.sign(private_key=privkey, algorithm=SHA256(), backend=get_backend())
-    return req
+        if load:
+            self.load_from_existing(load)
 
+    def load_from_existing(self, obj):
+        """Load certificate info from existing certificate or certificate request.
+        """
+        self.issuer_name = extract_name(obj.issuer)
+        self.next_update = obj.next_update
+        self.last_update = obj.last_update
 
-def create_x509_cert(privkey, pubkey, subject_info, issuer_info, days):
-    """Main cert creation code.
-    """
-    if not isinstance(subject_info, CertInfo):
-        info = CertInfo()
-        info.load_from_existing(subject_info)
-        subject_info = info
-    if not isinstance(issuer_info, CertInfo):
-        info = CertInfo()
-        info.load_from_existing(issuer_info)
-        issuer_info = info
+        for ext in obj.extensions:
+            crit = ext.critical
+            extobj = ext.value
+            if ext.oid == ExtensionOID.CRL_NUMBER:
+                self.crl_number = extobj.crl_number
+            elif ext.oid == ExtensionOID.DELTA_CRL_INDICATOR:
+                self.delta_crl_number = extobj.crl_number
+            elif ext.oid == ExtensionOID.ISSUER_ALTERNATIVE_NAME:
+                self.issuer_san = extract_gnames(extobj)
+            elif ext.oid == ExtensionOID.AUTHORITY_KEY_IDENTIFIER:
+                self.authority_key_identifier = extobj.key_identifier
+                self.authority_cert_issuer = extract_name(extobj.authority_cert_issuer)
+                self.authority_cert_serial_number = extobj.authority_cert_serial_number
+            elif ext.oid == ExtensionOID.AUTHORITY_INFORMATION_ACCESS:
+                # list of AccessDescription
+                pass
+            elif ext.oid == ExtensionOID.FRESHEST_CRL:
+                # list of DistributionPoint
+                pass
+            elif ext.oid == ExtensionOID.ISSUING_DISTRIBUTION_POINT:
+                # IssuingDistributionPoint
+                if extobj.only_contains_user_certs:
+                    self.crl_scope = 'user'
+                elif extobj.only_contains_ca_certs:
+                    self.crl_scope = 'ca'
+                elif extobj.only_contains_attribute_certs:
+                    self.crl_scope = 'attr'
+                else:
+                    self.crl_scope = 'all'
 
-    dt_now = datetime.utcnow()
-    dt_start = dt_now - timedelta(hours=1)
-    dt_end = dt_now + timedelta(days=days)
+                self.indirect_crl = extobj.indirect_crl
 
-    builder = (x509.CertificateBuilder()
-        .subject_name(subject_info.get_name())
-        .issuer_name(issuer_info.get_name())
-        .not_valid_before(dt_start)
-        .not_valid_after(dt_end)
-        .serial_number(int(uuid.uuid4()))
-        .public_key(pubkey))
+                self.full_methods = extract_gnames(extobj.full_name)
+                self.relative_methods = extract_gnames(extobj.relative_name)
+            else:
+                raise InvalidCertificate("Unsupported extension in CRL: %s" % (ext,))
 
-    builder = subject_info.install_extensions(builder)
+        # load revoked certs
+        for r_cert_obj in obj:
+            r_cert = RevCertInfo(load=r_cert_obj)
+            self.revoked_list.append(r_cert)
 
-    # SubjectKeyIdentifier
-    ext = x509.SubjectKeyIdentifier.from_public_key(pubkey)
-    builder = builder.add_extension(ext, critical=False)
+    def install_extensions(self, builder):
+        """Add common extensions to CRL builder.
+        """
+        # CRLNumber
+        if self.crl_number is not None:
+            ext = x509.CRLNumber(self.crl_number)
+            builder = builder.add_extension(ext, critical=False)
 
-    # AuthorityKeyIdentifier
-    ext = x509.AuthorityKeyIdentifier.from_issuer_public_key(privkey.public_key())
-    builder = builder.add_extension(ext, critical=False)
+        # DeltaCRLIndicator
+        if self.delta_crl_number is not None:
+            ext = x509.DeltaCRLIndicator(self.delta_crl_number)
+            builder = builder.add_extension(ext, critical=True)
 
-    # IssuerAlternativeName
-    if issuer_info.san:
-        ext = x509.IssuerAlternativeName(issuer_info.get_san_gnames())
+        # IssuingDistributionPoint
+        args = {
+            'full_name': None, 'relative_name': None,
+            'only_contains_user_certs': False,
+            'only_contains_ca_certs': False,
+            'only_some_reasons': None, 'indirect_crl': False,
+            'only_contains_attribute_certs': False}
+
+        if self.crl_scope == 'ca':
+            args['only_contains_ca_certs'] = True
+        elif self.crl_scope == 'user':
+            args['only_contains_user_certs'] = True
+        elif self.crl_scope == 'attr':
+            args['only_contains_user_certs'] = True
+        elif self.crl_scope != 'all':
+            raise ValueError('invalid scope: %r' % self.crl_scope)
+
+        if self.indirect_crl:
+            args['indirect_crl'] = True
+
+        if self.only_some_reasons:
+            args['only_some_reasons'] = frozenset([CRL_REASON[r] for r in self.only_some_reasons])
+
+        if self.full_methods is not None:
+            args['full_name'] = load_gnames(self.full_methods)
+        elif self.relative_methods is not None:
+            args['relative_name'] = load_gnames(self.relative_methods)
+
+        if any(args.values()):
+            ext = x509.IssuingDistributionPoint(**args)
+            builder = builder.add_extension(ext, critical=True)
+
+        return builder
+
+    def generate_crl(self, issuer_privkey, issuer_info, days):
+        """Return x509.CertificateRevocationList.
+        """
+        if 'crl_sign' not in issuer_info.usage:
+            raise InvalidCertificate("CA cert needs to have 'crl_sign' usage set.")
+
+        dt_now = datetime.utcnow()
+        dt_next = dt_now + timedelta(days=days)
+
+        builder = x509.CertificateRevocationListBuilder()
+        builder = builder.issuer_name(issuer_info.get_name())
+        builder = builder.last_update(dt_now)
+        builder = builder.next_update(dt_next)
+        builder = self.install_extensions(builder)
+
+        # IssuerAlternativeName
+        if issuer_info.san:
+            ext = x509.IssuerAlternativeName(issuer_info.get_san_gnames())
+            builder = builder.add_extension(ext, critical=False)
+
+        # AuthorityKeyIdentifier
+        ext = x509.AuthorityKeyIdentifier.from_issuer_public_key(issuer_privkey.public_key())
         builder = builder.add_extension(ext, critical=False)
 
-    # final cert
-    cert = builder.sign(private_key=privkey, algorithm=SHA256(), backend=get_backend())
-    return cert
+        # add revoked certs
+        for rev_cert in self.revoked_list:
+            rcert = rev_cert.generate_rcert()
+            builder = builder.add_revoked_certificate(rcert)
 
+        crl = builder.sign(private_key=issuer_privkey, algorithm=SHA256(), backend=get_backend())
+        return crl
 
-def new_ec_key(name='secp256r1'):
-    """New Elliptic Curve key
+    def show(self, writeln):
+        """Print out details.
+        """
+        if self.issuer_name:
+            writeln('Issuer Name: %s' % render_name(self.issuer_name))
+        show_list('Issuer SAN', self.issuer_san, writeln)
+        writeln('CRL Scope: %s' % self.crl_scope)
+        if self.crl_number is not None:
+            writeln('CRL Number: %s' % serial_str(self.crl_number))
+        if self.delta_crl_number is not None:
+            writeln('Delta CRL Number: %s' % serial_str(self.delta_crl_number))
+        if self.last_update:
+            writeln('Last update: %s' % self.last_update.isoformat(' '))
+        if self.next_update:
+            writeln('Next update: %s' % self.next_update.isoformat(' '))
+        if self.full_methods:
+            show_list('Full Methods', self.full_methods, writeln)
+        if self.relative_methods:
+            show_list('Relative Methods', self.full_methods, writeln)
+
+        for rcert in self.revoked_list:
+            rcert.show(writeln)
+
+def create_x509_req(privkey, subject_info):
+    """Create x509.CertificateSigningRequest.
     """
-    if name not in EC_CURVES:
-        raise ValueError('Unknown curve')
-    return ec.generate_private_key(curve=EC_CURVES[name], backend=get_backend())
+    if isinstance(subject_info, (x509.Certificate, x509.CertificateSigningRequest)):
+        subject_info = CertInfo(load=subject_info)
+    elif not isinstance(subject_info, CertInfo):
+        raise ValueError("Expect certinfo")
+    return subject_info.generate_request(privkey)
 
 
-def new_rsa_key(bits=2048):
-    """New RSA key.
+def create_x509_cert(issuer_privkey, subject_pubkey, subject_info, issuer_info, days):
+    """Create x509.Certificate
     """
-    if bits < MIN_RSA_BITS or bits > MAX_RSA_BITS:
-        raise ValueError('Bad value for bits')
-    return rsa.generate_private_key(key_size=bits, public_exponent=65537, backend=get_backend())
+    if isinstance(subject_info, x509.CertificateSigningRequest):
+        subject_info = CertInfo(load=subject_info)
+    elif not isinstance(subject_info, CertInfo):
+        raise ValueError("Expect subject_info to be CertInfo or x509.CertificateSigningRequest")
+
+    if isinstance(issuer_info, x509.Certificate):
+        issuer_info = CertInfo(load=issuer_info)
+    elif not isinstance(issuer_info, CertInfo):
+        raise ValueError("Expect issuer_info to be CertInfo or x509.Certificate")
+
+    return subject_info.generate_certificate(subject_pubkey, issuer_info, issuer_privkey, days)
 
 
-def key_to_pem(key, password=None):
-    """Serialize key in PEM format, optionally encrypted.
+def create_x509_crl(issuer_privkey, issuer_info, crl_info, days):
+    """Create x509.CertificateRevocationList
     """
-    if password:
-        enc = BestAvailableEncryption(as_bytes(password))
-    else:
-        enc = NoEncryption()
-    return key.private_bytes(Encoding.PEM, PrivateFormat.PKCS8, enc)
+    if isinstance(issuer_info, (x509.Certificate, x509.CertificateSigningRequest)):
+        issuer_info = CertInfo(load=issuer_info)
+    elif not isinstance(issuer_info, CertInfo):
+        raise ValueError("Expect issuer_info to be CertInfo or x509.Certificate")
 
+    if not isinstance(issuer_info, CertInfo):
+        issuer_info = CertInfo(load=issuer_info)
+    if not isinstance(crl_info, CRLInfo):
+        crl_info = CRLInfo(load=crl_info)
 
-def cert_to_pem(cert):
-    """Serialize certificate in PEM format.
-    """
-    return cert.public_bytes(Encoding.PEM)
-
-
-def req_to_pem(req):
-    """Serialize certificate request in PEM format.
-    """
-    return req.public_bytes(Encoding.PEM)
-
+    return crl_info.generate_crl(issuer_privkey, issuer_info, days)
 
 #
 # Command-line UI
@@ -795,6 +1264,14 @@ def load_cert(fn):
     return crt
 
 
+def load_crl(fn):
+    """Read CRL file.
+    """
+    data = open(fn, 'rb').read()
+    crl = x509.load_pem_x509_crl(data, get_backend())
+    return crl
+
+
 def load_password(fn):
     """Read password from potentially gpg-encrypted file.
     """
@@ -803,60 +1280,6 @@ def load_password(fn):
     data = load_gpg_file(fn)
     data = data.strip(b'\n')
     return data
-
-
-def loop_escaped(val, c):
-    """Parse list of strings, separated by c.
-    """
-    if not val:
-        val = ''
-    val = as_unicode(val)
-    rc = re.compile(r'([^%s\\]|\\.)*' % re.escape(c))
-    pos = 0
-    while pos < len(val):
-        if val[pos] == c:
-            pos += 1
-            continue
-        m = rc.match(val, pos)
-        if not m:
-            raise Exception('rx bug')
-        pos = m.end()
-        yield unescape(m.group(0))
-
-
-def parse_list(slist):
-    """Parse comma-separated list to strings.
-    """
-    res = []
-    for v in loop_escaped(slist, ','):
-        v = v.strip()
-        if v:
-            res.append(v)
-    return res
-
-
-def parse_dn(dnstr):
-    """Parse openssl-style /-separated list to dict.
-    """
-    res = []
-    for part in loop_escaped(dnstr, '/'):
-        part = part.strip()
-        if not part:
-            continue
-        if '=' not in part:
-            raise InvalidCertificate("Need k=v in Name string")
-        k, v = part.split('=', 1)
-        res.append((k.strip(), v.strip()))
-    return res
-
-
-def same_pubkey(o1, o2):
-    """Compare public keys.
-    """
-    fmt = PublicFormat.SubjectPublicKeyInfo
-    p1 = o1.public_key().public_bytes(Encoding.PEM, fmt)
-    p2 = o2.public_key().public_bytes(Encoding.PEM, fmt)
-    return p1 == p2
 
 
 def die(txt, *args):
@@ -946,6 +1369,7 @@ def info_from_args(args):
         permit_subtrees=parse_list(args.permit_subtrees),
         exclude_subtrees=parse_list(args.exclude_subtrees),
         ca=args.CA,
+        inhibit_any=args.inhibit_any,
         path_length=args.path_length)
 
 
@@ -1014,6 +1438,7 @@ def do_sign(subject_csr, issuer_obj, issuer_key, days, path_length, reqInfo, res
 
     # Stamp request
     cert = create_x509_cert(issuer_key, subject_csr.public_key(), subject_info, issuer_info, days=days)
+    msg('Serial: %s', serial_str(subject_info.serial_number))
     return cert
 
 
@@ -1095,8 +1520,83 @@ def selfsign_command(args):
     do_output(cert_to_pem(cert), args, 'x509')
 
 
-def show_command(args):
+def update_crl_command(args):
+    """Load command-line arguments, output new CRL.
+    """
+    if args.files:
+        die("Unexpected positional arguments")
+
+    if not args.ca_info or not args.ca_key or not args.days:
+        die("need --ca-key, --ca-info, --days")
+
+    # Load CA info
+    issuer_obj = load_cert(args.ca_info)
+    issuer_info = CertInfo(load = issuer_obj)
+
+    # Load CA private key
+    issuer_key = load_key(args.ca_key, load_password(args.password_file))
+    if not same_pubkey(issuer_key, issuer_obj):
+        die("--ca-key does not match --ca-info data")
+
+    if args.crl:
+        crl_info = load_crl(args.crl)
+    else:
+        crl_info = CRLInfo()
+
+    if args.crl_number:
+        crl_info.crl_number = load_number(args.crl_number)
+    if args.delta_crl_number:
+        crl_info.delta_crl_number = load_number(args.delta_crl_number)
+
+    reason = None
+    if args.reason:
+        reason = CRL_REASON[args.reason]
+
+    invalidity_date = None
+    if args.invalidity_date:
+        invalidity_date = load_date(args.invalidity_date)
+
+    revocation_date = datetime.utcnow()
+
+    for crt_fn in (args.revoke_certs or []):
+        cert = load_cert(crt_fn)
+        rcert = RevCertInfo(serial_number=cert.serial_number, reason=reason,
+                            revocation_date=revocation_date,
+                            invalidity_date=invalidity_date)
+        crl_info.revoked_list.append(rcert)
+
+    for crt_serial in (args.revoke_serials or []):
+        serial_number = load_number(crt_serial)
+        rcert = RevCertInfo(serial_number=serial_number, reason=reason,
+                            revocation_date=revocation_date,
+                            invalidity_date=invalidity_date)
+        crl_info.revoked_list.append(rcert)
+
+
+    res = create_x509_crl(issuer_key, issuer_info, crl_info, args.days)
+    do_output(crl_to_pem(res), args, 'crl')
+
+
+def show_command_sysca(args):
     """Dump .crt and .csr files.
+    """
+    for fn in args.files:
+        ext = os.path.splitext(fn)[1].lower()
+        if ext == '.csr':
+            req = CertInfo(load=load_req(fn))
+            req.show(msg_show)
+        elif ext == '.crt':
+            crt = CertInfo(load=load_cert(fn))
+            crt.show(msg_show)
+        elif ext == '.crl':
+            crl = CRLInfo(load=load_crl(fn))
+            crl.show(msg_show)
+        else:
+            die("Unsupported file: %s", fn)
+
+
+def show_command_openssl(args):
+    """Dump .crt and .csr files via openssl tool.
     """
     for fn in args.files:
         ext = os.path.splitext(fn)[1].lower()
@@ -1104,9 +1604,20 @@ def show_command(args):
             cmd = ['openssl', 'req', '-in', fn, '-text']
         elif ext == '.crt':
             cmd = ['openssl', 'x509', '-in', fn, '-text']
+        elif ext == '.crl':
+            cmd = ['openssl', 'crl', '-in', fn, '-text']
         else:
             die("Unsupported file: %s", fn)
         subprocess.check_call(cmd)
+
+
+def show_command(args):
+    """Dump using either internal code or openssl tool.
+    """
+    if args.text:
+        show_command_openssl(args)
+    else:
+        show_command_sysca(args)
 
 
 def setup_args():
@@ -1118,6 +1629,7 @@ def setup_args():
                                 "       %(prog)s request --key KEY_FILE [--subject DN] [--san ALT] [...]\n" +
                                 "       %(prog)s selfsign --key KEY_FILE --days N [--subject DN] [--san ALT] [...]\n" +
                                 "       %(prog)s sign --request FN --ca-key FN --ca-info FN --days N [--reset] [...]\n" +
+                                "       %(prog)s update-crl --ca-key FN --ca-info FN [--crl FN] [...]\n" +
                                 "       %(prog)s show FILE")
     p.add_argument('--version', help='show version and exit', action='version',
                    version='%(prog)s ' + __version__)
@@ -1153,19 +1665,33 @@ def setup_args():
     g2.add_argument('--issuer-urls', help='URLs for issuer cert.', metavar='URLS')
     g2.add_argument('--permit-subtrees', help='Allowed NameConstraints.', metavar='GNAMES')
     g2.add_argument('--exclude-subtrees', help='Disallowed NameConstraints.', metavar='GNAMES')
+    g2.add_argument('--inhibit-any', help='Number of levels after which "any" policy is ignored.', metavar='N', type=int)
 
     g3 = p.add_argument_group('Command "sign"',
                               "Create certificate for key in certificate request.  "
                               "All metadata is taken from certificate request file.")
+    g3.add_argument('--request', help='Filename of certificate request (CSR) to be signed.', metavar='FN')
+    g3.add_argument('--reset', help='Rewrite all info fields.  Default: no.', action='store_true')
     g3.add_argument('--ca-key', help='Private key file.', metavar='FN')
     g3.add_argument('--ca-info', help='Filename of CA details (CRT or CSR).', metavar='FN')
-    g3.add_argument('--request', help='Filename of certificate request (CSR) to be signed.', metavar='FN')
     g3.add_argument('--days', help='Certificate lifetime in days', type=int)
-    g3.add_argument('--reset', help='Rewrite all info fields.  Default: no.', action='store_true')
 
-    g4 = p.add_argument_group('Command "show"',
+    g4 = p.add_argument_group('Command "update-crl"',
+                              "Create/update certificate revocation list.  "
+                              "CA key is given by: --ca-key, --ca-info.  Lifetime by --days."
+                              )
+    g4.add_argument('--crl', help='Filename of certificate revocation list (CRL) to be updated.', metavar='FN')
+    g4.add_argument('--crl-number', help='Version number for main CRL', metavar='VER')
+    g4.add_argument('--delta-crl-number', help='Version number for parent CRL', metavar='VER')
+    g4.add_argument('--revoke-certs', help='Version number for parent CRL', metavar='FN', nargs='+')
+    g4.add_argument('--revoke-serials', help='Version number for parent CRL', metavar='NUM', nargs='+')
+    g4.add_argument('--reason', help='Reason for revocation')
+    g4.add_argument('--invalidity-date', help='Consider certificate invalid from date', metavar='DATE')
+    g4.add_argument('--crl-scope', help='CRL scope, one of: all, user, ca, attr.  Default: all', metavar='SCOPE')
+
+    g5 = p.add_argument_group('Command "show"',
                               "Show CSR or CRT file contents.  Takes .crt or .csr filenames as arguments.")
-    g4.add_argument('files', help=argparse.SUPPRESS, nargs='*')
+    g5.add_argument('files', help=argparse.SUPPRESS, nargs='*')
 
     return p
 
@@ -1187,6 +1713,8 @@ def run_sysca(argv):
         sign_command(args)
     elif args.command == 'selfsign':
         selfsign_command(args)
+    elif args.command == 'update-crl':
+        update_crl_command(args)
     elif args.command == 'show':
         show_command(args)
     else:

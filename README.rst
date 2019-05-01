@@ -60,6 +60,15 @@ Sign certificate signing request::
                [--out CRT_FN] [--password-file TXT_FILE]
                [--reset ...]
 
+Change CRL file::
+
+    sysca update-crl --crl CRL_FILE --ca-key KEY_FILE --ca-info CRT_FILE
+               --days NUM [--out CRT_FN] [--password-file TXT_FILE]
+               [--reason REASON_NAME]
+               [--revoke-cert CERT_FILE] ...
+               [--revoke-serial SERIAL] ...
+               [--crl-number NUM] [--delta-crl-number NUM]
+
 Display contents of CSR or CRT file::
 
     sysca show FILE

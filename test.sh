@@ -115,6 +115,8 @@ $sysca selfsign \
   --ocsp-nocheck \
   --ocsp-must-staple \
   --ocsp-must-staple-v2 \
+  --inhibit-any 5 \
+  --CA \
   --days 900 \
   --out tmp/selfsigned.crt
 
