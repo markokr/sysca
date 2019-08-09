@@ -1,6 +1,13 @@
 Version history
 ===============
 
+1.2
+---
+
+* [feature] Support CRL generation via ``update-crl`` command.
+* [feature] Support ed25519 keys, if ``cryptography`` supports them.
+* [fix] Drop support of Python 2.
+
 1.1
 ---
 
