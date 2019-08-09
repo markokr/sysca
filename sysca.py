@@ -1648,6 +1648,16 @@ def show_command(args):
         show_command_sysca(args)
 
 
+def version_info():
+    """Info string for --version.
+    """
+    b = default_backend()
+    bver = b.name
+    if hasattr(b, 'openssl_version_text'):
+        bver = b.openssl_version_text()
+    return '%s %s (cryptography %s, %s)' % ('%(prog)s', __version__, crypto_version, bver)
+
+
 def setup_args():
     """Create ArgumentParser
     """
@@ -1659,8 +1669,7 @@ def setup_args():
                                 "       %(prog)s sign --request FN --ca-key FN --ca-info FN --days N [--reset] [...]\n" +
                                 "       %(prog)s update-crl --ca-key FN --ca-info FN [--crl FN] [...]\n" +
                                 "       %(prog)s show FILE")
-    p.add_argument('--version', help='show version and exit', action='version',
-                   version='%(prog)s ' + __version__)
+    p.add_argument('--version', help='show version and exit', action='version', version=version_info())
     p.add_argument('--password-file', help='File to load password from', metavar='FN')
     p.add_argument('--text', help='Add human-readable text about output', action='store_true')
     p.add_argument('--out', help='File to write output to, instead stdout', metavar='FN')
