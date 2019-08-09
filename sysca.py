@@ -348,7 +348,7 @@ def get_backend():
     return default_backend()
 
 
-def get_hash_algo(privkey):
+def get_hash_algo(privkey, ctx):
     """Return signature hash algo based on privkey.
     """
     if ed25519 is not None and isinstance(privkey, ed25519.Ed25519PrivateKey):
@@ -862,7 +862,7 @@ class CertInfo:
         builder = self.install_extensions(builder)
 
         # create final request
-        req = builder.sign(private_key=privkey, algorithm=get_hash_algo(privkey), backend=get_backend())
+        req = builder.sign(private_key=privkey, algorithm=get_hash_algo(privkey, 'CSR'), backend=get_backend())
         return req
 
     def generate_certificate(self, subject_pubkey, issuer_info, issuer_privkey, days):
@@ -898,7 +898,7 @@ class CertInfo:
             builder = builder.add_extension(ext, critical=False)
 
         # final cert
-        cert = builder.sign(private_key=issuer_privkey, algorithm=get_hash_algo(issuer_privkey), backend=get_backend())
+        cert = builder.sign(private_key=issuer_privkey, algorithm=get_hash_algo(issuer_privkey, 'CRT'), backend=get_backend())
         return cert
 
     def show(self, writeln):
@@ -1169,7 +1169,7 @@ class CRLInfo:
             rcert = rev_cert.generate_rcert()
             builder = builder.add_revoked_certificate(rcert)
 
-        crl = builder.sign(private_key=issuer_privkey, algorithm=get_hash_algo(issuer_privkey), backend=get_backend())
+        crl = builder.sign(private_key=issuer_privkey, algorithm=get_hash_algo(issuer_privkey, 'CRL'), backend=get_backend())
         return crl
 
     def show(self, writeln):
