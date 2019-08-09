@@ -16,7 +16,7 @@ import uuid
 from datetime import datetime, timedelta
 
 from cryptography.hazmat.primitives.asymmetric import ec, rsa
-from cryptography.hazmat.primitives.hashes import SHA256
+from cryptography.hazmat.primitives.hashes import SHA256, SHA384, SHA512
 from cryptography.hazmat.primitives.serialization import (
     Encoding, PrivateFormat, PublicFormat,
     BestAvailableEncryption, NoEncryption, load_pem_private_key)
@@ -346,6 +346,21 @@ def get_backend():
     """
     from cryptography.hazmat.backends import default_backend
     return default_backend()
+
+
+def get_hash_algo(privkey):
+    """Return signature hash algo based on privkey.
+    """
+    if ed25519 is not None and isinstance(privkey, ed25519.Ed25519PrivateKey):
+        return None
+    if ed448 is not None and isinstance(privkey, ed448.Ed448PrivateKey):
+        return None
+    if isinstance(privkey, ec.EllipticCurvePrivateKey):
+        if privkey.key_size > 500:
+            return SHA512()
+        if privkey.key_size > 300:
+            return SHA384()
+    return SHA256()
 
 
 def new_ec_key(name='secp256r1'):
@@ -847,7 +862,7 @@ class CertInfo:
         builder = self.install_extensions(builder)
 
         # create final request
-        req = builder.sign(private_key=privkey, algorithm=SHA256(), backend=get_backend())
+        req = builder.sign(private_key=privkey, algorithm=get_hash_algo(privkey), backend=get_backend())
         return req
 
     def generate_certificate(self, subject_pubkey, issuer_info, issuer_privkey, days):
@@ -883,7 +898,7 @@ class CertInfo:
             builder = builder.add_extension(ext, critical=False)
 
         # final cert
-        cert = builder.sign(private_key=issuer_privkey, algorithm=SHA256(), backend=get_backend())
+        cert = builder.sign(private_key=issuer_privkey, algorithm=get_hash_algo(issuer_privkey), backend=get_backend())
         return cert
 
     def show(self, writeln):
@@ -1154,7 +1169,7 @@ class CRLInfo:
             rcert = rev_cert.generate_rcert()
             builder = builder.add_revoked_certificate(rcert)
 
-        crl = builder.sign(private_key=issuer_privkey, algorithm=SHA256(), backend=get_backend())
+        crl = builder.sign(private_key=issuer_privkey, algorithm=get_hash_algo(issuer_privkey), backend=get_backend())
         return crl
 
     def show(self, writeln):
