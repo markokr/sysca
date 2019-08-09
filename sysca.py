@@ -35,7 +35,7 @@ except ImportError:
     ed25519 = ed448 = None
 
 
-__version__ = '1.1'
+__version__ = '1.2'
 
 __all__ = [
     'CertInfo', 'RevCertInfo', 'CRLInfo',
