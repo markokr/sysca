@@ -134,10 +134,10 @@ XKU_CODE_TO_OID = {
 # minimal KeyUsage defaults to add when ExtendedKeyUsage is given
 XKU_DEFAULTS = {
     'any': ['digital_signature', 'key_encipherment', 'key_agreement', 'content_commitment', 'data_encipherment', 'key_cert_sign', 'crl_sign'],
-    'server': ['digital_signature', 'key_encipherment'], # key_agreement
+    'server': ['digital_signature'], # key_agreement, key_encipherment
     'client': ['digital_signature'], # key_agreement
     'code': ['digital_signature'], # -
-    'email': ['digital_signature', 'key_encipherment'], # content_commitment, key_agreement
+    'email': ['digital_signature'], # content_commitment, key_agreement, key_encipherment
     'time': ['digital_signature'], # content_commitment
     'ocsp': ['digital_signature'], # content_commitment
 
@@ -151,10 +151,9 @@ CA_DEFAULTS = {
     'crl_sign': True,
 }
 
-# allow client, server and email use
+# when usage not set
 NONCA_DEFAULTS = {
     'digital_signature': True,
-    'key_encipherment': True,
 }
 
 # CRL reason
@@ -1017,6 +1016,7 @@ class RevCertInfo:
             writeln('  Reason: %s' % self.reason)
         show_list('Issuer GNames', self.issuer_gnames, writeln)
 
+
 class CRLInfo:
     """Container for certificate revocation object info.
     """
@@ -1194,6 +1194,7 @@ class CRLInfo:
 
         for rcert in self.revoked_list:
             rcert.show(writeln)
+
 
 def create_x509_req(privkey, subject_info):
     """Create x509.CertificateSigningRequest.
