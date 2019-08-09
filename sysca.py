@@ -26,11 +26,11 @@ from cryptography import x509
 from cryptography import __version__ as crypto_version
 from cryptography.x509.oid import (
     NameOID, ExtendedKeyUsageOID, CRLEntryExtensionOID,
-    ExtensionOID, AuthorityInformationAccessOID)
+    ExtensionOID, AuthorityInformationAccessOID, SignatureAlgorithmOID)
 
 try:
     from cryptography.hazmat.primitives.asymmetric import ed25519, ed448
-    if '.'.join(crypto_version.split('.')[:2]) in ('2.6', '2.7'):
+    if not getattr(SignatureAlgorithmOID, 'ED25519', None):
         ed25519 = ed448 = None
 except ImportError:
     ed25519 = ed448 = None
