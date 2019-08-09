@@ -193,3 +193,23 @@ def test_crl_passthrough():
     assert lst1 == lst2
 
 
+def test_safecurves():
+    if sysca.ed25519 is None:
+        return
+
+    # create ca key and cert
+    ca_key = sysca.new_ec_key('ed25519')
+    ca_pub_key = ca_key.public_key()
+    ca_info = sysca.CertInfo(subject={'CN': 'TestCA'}, ca=True)
+    ca_cert = sysca.create_x509_cert(ca_key, ca_pub_key, ca_info, ca_info, 365)
+
+    # srv key
+    srv_key = sysca.new_ec_key('ed25519')
+    srv_info = sysca.CertInfo(subject={'CN': 'Server1'})
+    srv_req = sysca.create_x509_req(srv_key, srv_info)
+
+    # ca signs
+    srv_info2 = sysca.CertInfo(load=srv_req)
+    srv_cert = sysca.create_x509_cert(ca_key, srv_req.public_key(), srv_info2, ca_info, 365)
+
+

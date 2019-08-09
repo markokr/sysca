@@ -86,7 +86,7 @@ or ``rsa:<bits>``.  Shortcuts: ``ec`` is ``ec:secp256r1``,
 ``rsa`` is ``rsa:2048``.  Default: ``ec``.
 
 Available curves for EC: ``secp256r1``, ``secp384r1``,
-``secp521r1``, ``secp224r1``, ``secp192r1``.
+``secp521r1``, ``secp224r1``, ``secp192r1``, ``ed25519``.
 
 Options:
 

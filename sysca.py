@@ -22,9 +22,17 @@ from cryptography.hazmat.primitives.serialization import (
     BestAvailableEncryption, NoEncryption, load_pem_private_key)
 
 from cryptography import x509
+from cryptography import __version__ as crypto_version
 from cryptography.x509.oid import (
     NameOID, ExtendedKeyUsageOID, CRLEntryExtensionOID,
     ExtensionOID, AuthorityInformationAccessOID)
+
+try:
+    from cryptography.hazmat.primitives.asymmetric import ed25519, ed448
+    if '.'.join(crypto_version.split('.')[:2]) in ('2.6', '2.7'):
+        ed25519 = ed448 = None
+except ImportError:
+    ed25519 = ed448 = None
 
 
 __version__ = '1.1'
@@ -343,6 +351,10 @@ def get_backend():
 def new_ec_key(name='secp256r1'):
     """New Elliptic Curve key
     """
+    if name == 'ed25519' and ed25519 is not None:
+        return ed25519.Ed25519PrivateKey.generate()
+    if name == 'ed448' and ed448 is not None:
+        return ed448.Ed448PrivateKey.generate()
     if name not in EC_CURVES:
         raise ValueError('Unknown curve')
     return ec.generate_private_key(curve=EC_CURVES[name], backend=get_backend())
