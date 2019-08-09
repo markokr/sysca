@@ -15,6 +15,7 @@ import uuid
 
 from datetime import datetime, timedelta
 
+from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import ec, rsa
 from cryptography.hazmat.primitives.hashes import SHA256, SHA384, SHA512
 from cryptography.hazmat.primitives.serialization import (
@@ -344,7 +345,6 @@ def same_pubkey(o1, o2):
 def get_backend():
     """Returns backend to use.
     """
-    from cryptography.hazmat.backends import default_backend
     return default_backend()
 
 
