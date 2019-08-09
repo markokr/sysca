@@ -382,6 +382,48 @@ def new_rsa_key(bits=2048):
     return rsa.generate_private_key(key_size=bits, public_exponent=65537, backend=get_backend())
 
 
+def valid_pubkey(pubkey):
+    """Return True if usable public key.
+    """
+    if isinstance(pubkey, rsa.RSAPublicKey):
+        return pubkey.key_size >= MIN_RSA_BITS and pubkey.key_size <= MAX_RSA_BITS
+    if isinstance(pubkey, ec.EllipticCurvePublicKey):
+        return pubkey.curve.name in EC_CURVES
+    if ed25519 is not None and isinstance(pubkey, ed25519.Ed25519PublicKey):
+        return True
+    if ed448 is not None and isinstance(pubkey, ed448.Ed448PublicKey):
+        return True
+    return False
+
+
+def valid_privkey(privkey):
+    """Return True if usable private key.
+    """
+    if isinstance(privkey, rsa.RSAPrivateKey):
+        return privkey.key_size >= MIN_RSA_BITS and privkey.key_size <= MAX_RSA_BITS
+    if isinstance(privkey, ec.EllipticCurvePrivateKey):
+        return privkey.curve.name in EC_CURVES
+    if ed25519 is not None and isinstance(privkey, ed25519.Ed25519PrivateKey):
+        return True
+    if ed448 is not None and isinstance(privkey, ed448.Ed448PrivateKey):
+        return True
+    return False
+
+
+def get_key_name(key):
+    """Return key type.
+    """
+    if isinstance(key, (rsa.RSAPublicKey, rsa.RSAPrivateKey)):
+        return 'rsa:%d' % key.key_size
+    if isinstance(key, (ec.EllipticCurvePublicKey, ec.EllipticCurvePrivateKey)):
+        return 'ec:%s' % key.curve.name
+    if ed25519 is not None and isinstance(key, (ed25519.Ed25519PublicKey, ed25519.Ed25519PrivateKey)):
+        return 'ec:ed25519'
+    if ed448 is not None and isinstance(key, (ed448.Ed448PublicKey, ed448.Ed448PrivateKey)):
+        return 'ec:ed448'
+    return '<unknown key type>'
+
+
 #
 # Converters
 #
@@ -610,6 +652,7 @@ class CertInfo:
         if self.path_length < 0:
             self.path_length = None
 
+        self.public_key_info = None
         if load:
             self.load_from_existing(load)
 
@@ -623,11 +666,14 @@ class CertInfo:
                 self.version = 1
             elif obj.version == x509.Version.v3:
                 self.version = 3
+            else:
+                raise InvalidCertificate('Unsupported certificate version')
         elif isinstance(obj, x509.CertificateSigningRequest):
             self.serial_number = None
             self.version = None
         else:
             raise InvalidCertificate('Invalid obj type: %s' % type(obj))
+        self.public_key_info = get_key_name(obj.public_key())
 
         self.subject = extract_name(obj.subject)
 
@@ -907,6 +953,8 @@ class CertInfo:
             writeln('Version: %s' % self.version)
         if self.serial_number is not None:
             writeln('Serial: %s' % serial_str(self.serial_number))
+        if self.public_key_info:
+            writeln('Public key: %s' % self.public_key_info)
         if self.subject:
             writeln('Subject: %s' % render_name(self.subject))
         show_list('SAN', self.san, writeln)
@@ -1199,6 +1247,8 @@ class CRLInfo:
 def create_x509_req(privkey, subject_info):
     """Create x509.CertificateSigningRequest.
     """
+    if not valid_privkey(privkey):
+        raise ValueError("Invalid private key")
     if isinstance(subject_info, (x509.Certificate, x509.CertificateSigningRequest)):
         subject_info = CertInfo(load=subject_info)
     elif not isinstance(subject_info, CertInfo):
@@ -1209,6 +1259,11 @@ def create_x509_req(privkey, subject_info):
 def create_x509_cert(issuer_privkey, subject_pubkey, subject_info, issuer_info, days):
     """Create x509.Certificate
     """
+    if not valid_privkey(issuer_privkey):
+        raise ValueError("Invalid issuer private key")
+    if not valid_pubkey(subject_pubkey):
+        raise ValueError("Invalid subject public key")
+
     if isinstance(subject_info, x509.CertificateSigningRequest):
         subject_info = CertInfo(load=subject_info)
     elif not isinstance(subject_info, CertInfo):
@@ -1225,6 +1280,8 @@ def create_x509_cert(issuer_privkey, subject_pubkey, subject_info, issuer_info, 
 def create_x509_crl(issuer_privkey, issuer_info, crl_info, days):
     """Create x509.CertificateRevocationList
     """
+    if not valid_privkey(issuer_privkey):
+        raise ValueError("Invalid issuer private key")
     if isinstance(issuer_info, (x509.Certificate, x509.CertificateSigningRequest)):
         issuer_info = CertInfo(load=issuer_info)
     elif not isinstance(issuer_info, CertInfo):
@@ -1440,22 +1497,14 @@ def do_sign(subject_csr, issuer_obj, issuer_key, days, path_length, reqInfo, res
 
     # Load subject's public key, check sanity
     pkey = subject_csr.public_key()
-    if isinstance(pkey, ec.EllipticCurvePublicKey):
-        pkeyinfo = 'ec:' + str(pkey.curve.name)
-        if pkey.curve.name not in EC_CURVES:
-            die("Curve not allowed: %s", pkey.curve.name)
-    elif isinstance(pkey, rsa.RSAPublicKey):
-        pkeyinfo = 'rsa:' + str(pkey.key_size)
-        if pkey.key_size < MIN_RSA_BITS or pkey.key_size > MAX_RSA_BITS:
-            die("RSA size not allowed: %s", pkey.key_size)
-    else:
-        die("Unsupported public key: %s", str(pkey))
+    if not valid_pubkey(pkey):
+        die("Invalid public key")
 
     # Report
     if subject_info.ca:
-        msg('Signing CA cert [%s] - %s', pkeyinfo, reqInfo)
+        msg('Signing CA cert [%s] - %s', get_key_name(pkey), reqInfo)
     else:
-        msg('Signing end-entity cert [%s] - %s', pkeyinfo, reqInfo)
+        msg('Signing end-entity cert [%s] - %s', get_key_name(pkey), reqInfo)
     msg('Issuer name: %s', render_name(issuer_info.subject))
     msg('Subject:')
     subject_info.show(msg_show)
