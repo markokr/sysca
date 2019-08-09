@@ -214,6 +214,8 @@ def serial_str(snum):
 
 
 def load_number(sval):
+    """Parse number from command line.
+    """
     if re.match(r'^[0-9a-f]+(:[0-9a-f]+)+$', sval, re.I):
         return int(sval.replace(':', ''), 16)
     if re.match(r'^[0-9a-f]+(-[0-9a-f]+)+$', sval, re.I):
@@ -224,6 +226,8 @@ def load_number(sval):
 
 
 def load_date(sval):
+    """Parse date from command line.
+    """
     if re.match(r'^\d\d\d\d-\d\d-\d\d$', sval):
         return datetime.strptime(sval, '%Y-%m-%d')
     raise ValueError("Invalid date: %r" % sval)
