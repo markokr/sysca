@@ -30,8 +30,10 @@ from cryptography.x509.oid import (
 
 try:
     from cryptography.hazmat.primitives.asymmetric import ed25519, ed448
-    if not getattr(SignatureAlgorithmOID, 'ED25519', None):
-        ed25519 = ed448 = None
+    if not hasattr(SignatureAlgorithmOID, 'ED25519'):
+        ed25519 = None
+    if not hasattr(SignatureAlgorithmOID, 'ED448'):
+        ed448 = None
 except ImportError:
     ed25519 = ed448 = None
 
@@ -365,10 +367,14 @@ def get_hash_algo(privkey, ctx):
 def new_ec_key(name='secp256r1'):
     """New Elliptic Curve key
     """
-    if name == 'ed25519' and ed25519 is not None:
-        return ed25519.Ed25519PrivateKey.generate()
-    if name == 'ed448' and ed448 is not None:
-        return ed448.Ed448PrivateKey.generate()
+    if name == 'ed25519':
+        if ed25519 is not None:
+            return ed25519.Ed25519PrivateKey.generate()
+        raise ValueError('ed25519 not supported')
+    if name == 'ed448':
+        if ed448 is not None:
+            return ed448.Ed448PrivateKey.generate()
+        raise ValueError('ed448 not supported')
     if name not in EC_CURVES:
         raise ValueError('Unknown curve')
     return ec.generate_private_key(curve=EC_CURVES[name], backend=get_backend())
