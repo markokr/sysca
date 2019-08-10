@@ -1094,8 +1094,10 @@ class CRLInfo:
             self.load_from_existing(load)
 
     def load_from_existing(self, obj):
-        """Load certificate info from existing certificate or certificate request.
+        """Load certificate info from existing CRL.
         """
+        if not isinstance(obj, cryptography.x509.CertificateRevocationList):
+            raise TypeError("Expect CertificateRevocationList")
         self.issuer_name = extract_name(obj.issuer)
         self.next_update = obj.next_update
         self.last_update = obj.last_update
