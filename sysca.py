@@ -579,7 +579,7 @@ def crl_to_pem(crl):
 class CertInfo:
     """Container for certificate fields.
     """
-    def __init__(self, subject=None, alt_names=None, ca=False, path_length=0,
+    def __init__(self, subject=None, alt_names=None, ca=False, path_length=None,
                  usage=None, ocsp_urls=None, crl_urls=None, issuer_urls=None,
                  ocsp_nocheck=False, ocsp_must_staple=False, ocsp_must_staple_v2=False,
                  permit_subtrees=None, exclude_subtrees=None, inhibit_any=None,
@@ -649,7 +649,7 @@ class CertInfo:
         self.serial_number = None
         self.inhibit_any = inhibit_any
 
-        if self.path_length < 0:
+        if self.path_length is not None and self.path_length < 0:
             self.path_length = None
 
         self.public_key_info = None
@@ -1490,9 +1490,13 @@ def do_sign(subject_csr, issuer_obj, issuer_key, days, path_length, reqInfo, res
     if subject_info.ca:
         if not same_pubkey(subject_csr, issuer_obj):
             # not self-signing, check depth
-            if issuer_info.path_length == 0:
+            if issuer_info.path_length is None:
+                pass
+            elif issuer_info.path_length == 0:
                 die("Issuer cannot sign sub-CAs")
-            if issuer_info.path_length - 1 < path_length:
+            elif path_length is None:
+                subject_info.path_length = issuer_info.path_length - 1
+            elif issuer_info.path_length - 1 < path_length:
                 die("--path-length not allowed by issuer")
 
     # Load subject's public key, check sanity
@@ -1741,7 +1745,7 @@ def setup_args():
     g2.add_argument('--CA', help='Request CA cert.  Default: not set.', action='store_true')
     g2.add_argument('--path-length',
                     help='Max levels of sub-CAs.  Default: 0',
-                    type=int, default=0, metavar='DEPTH')
+                    type=int, default=None, metavar='DEPTH')
     g2.add_argument('--usage', help='Keywords: client, server, code, email, time, ocsp.')
     g2.add_argument('--ocsp-urls', help='URLs for OCSP info.', metavar='URLS')
     g2.add_argument('--ocsp-nocheck', help='Disable OCSP check.', action='store_true')
