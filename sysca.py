@@ -571,6 +571,12 @@ def crl_to_pem(crl):
     return crl.public_bytes(Encoding.PEM)
 
 
+def convert_urls_to_gnames(url_list):
+    """Return urls as GeneralNames
+    """
+    urls = ['uri:' + u for u in url_list]
+    return load_gnames(urls)
+
 
 #
 # Info objects
@@ -653,13 +659,12 @@ class CertInfo:
             self.path_length = None
 
         self.public_key_info = None
-        if load:
+        if load is not None:
             self.load_from_existing(load)
 
     def load_from_existing(self, obj):
         """Load certificate info from existing certificate or certificate request.
         """
-
         if isinstance(obj, x509.Certificate):
             self.serial_number = obj.serial_number
             if obj.version == x509.Version.v1:
@@ -784,24 +789,6 @@ class CertInfo:
         """
         return load_gnames(self.san)
 
-    def get_ocsp_gnames(self):
-        """Return ocsp_urls as GeneralNames
-        """
-        urls = ['uri:' + u for u in self.ocsp_urls]
-        return load_gnames(urls)
-
-    def get_issuer_urls_gnames(self):
-        """Return issuer_urls as GeneralNames
-        """
-        urls = ['uri:' + u for u in self.issuer_urls]
-        return load_gnames(urls)
-
-    def get_crl_gnames(self):
-        """Return crl_urls as GeneralNames
-        """
-        urls = ['uri:' + u for u in self.crl_urls]
-        return load_gnames(urls)
-
     def get_tls_features(self):
         """Return TLS Feature list
         """
@@ -862,7 +849,7 @@ class CertInfo:
 
         # CRLDistributionPoints
         if self.crl_urls:
-            full_names = self.get_crl_gnames()
+            full_names = convert_urls_to_gnames(self.crl_urls)
             reasons = None
             crl_issuer = None
             point = x509.DistributionPoint(full_names, None, reasons, crl_issuer)
@@ -872,9 +859,9 @@ class CertInfo:
         # AuthorityInformationAccess
         if self.ocsp_urls or self.issuer_urls:
             oid = AuthorityInformationAccessOID.OCSP
-            ocsp_list = [x509.AccessDescription(oid, gn) for gn in self.get_ocsp_gnames()]
+            ocsp_list = [x509.AccessDescription(oid, gn) for gn in convert_urls_to_gnames(self.ocsp_urls)]
             oid = AuthorityInformationAccessOID.CA_ISSUERS
-            ca_list = [x509.AccessDescription(oid, gn) for gn in self.get_issuer_urls_gnames()]
+            ca_list = [x509.AccessDescription(oid, gn) for gn in convert_urls_to_gnames(self.issuer_urls)]
             ext = x509.AuthorityInformationAccess(ocsp_list + ca_list)
             builder = builder.add_extension(ext, critical=False)
 
@@ -972,8 +959,7 @@ class CertInfo:
             tls_features.append('status_request')
         if self.ocsp_must_staple_v2:
             tls_features.append('status_request_v2')
-        if tls_features:
-            show_list('TLS Features', tls_features, writeln)
+        show_list('TLS Features', tls_features, writeln)
         if self.inhibit_any is not None:
             writeln('Inhibit ANY policy: skip_certs=%r' % self.inhibit_any)
 
@@ -1068,28 +1054,37 @@ class RevCertInfo:
 class CRLInfo:
     """Container for certificate revocation object info.
     """
-    def __init__(self, revoked_list=None, load=None):
+    def __init__(self, revoked_list=None,
+                 next_update=None, last_update=None, crl_number=None, delta_crl_number=None,
+                 crl_scope='all', indirect_crl=False, only_some_reasons=None, full_methods=None, relative_methods=None,
+                 issuer_urls=None, ocsp_urls=None, freshest_urls=None,
+                 load=None):
         """Initialize info object.
         """
         self.revoked_list = revoked_list or []
         self.issuer_name = None
         self.issuer_san = None
         self.auth_key_id = None
-        self.next_update = None
-        self.last_update = None
-        self.crl_number = None
-        self.delta_crl_number = None
+        self.next_update = next_update
+        self.last_update = last_update
+        self.crl_number = crl_number
+        self.delta_crl_number = delta_crl_number
 
         # IssuingDistributionPoint
-        self.crl_scope = 'all'      # all,user,ca,attr
-        self.indirect_crl = False
-        self.only_some_reasons = frozenset()
-        self.full_methods = None
-        self.relative_methods = None
+        self.crl_scope = crl_scope      # all,user,ca,attr
+        self.indirect_crl = indirect_crl
+        self.only_some_reasons = only_some_reasons or set()
+        self.full_methods = full_methods
+        self.relative_methods = relative_methods
+
+        # AuthorityInformationAccess
+        self.issuer_urls = maybe_parse(issuer_urls, parse_list)
+        self.ocsp_urls = maybe_parse(ocsp_urls, parse_list)
 
         # Freshest CRL (a.k.a. Delta CRL Distribution Point)
+        self.freshest_urls = maybe_parse(freshest_urls, parse_list)
 
-        if load:
+        if load is not None:
             self.load_from_existing(load)
 
     def load_from_existing(self, obj):
@@ -1114,10 +1109,32 @@ class CRLInfo:
                 self.authority_cert_serial_number = extobj.authority_cert_serial_number
             elif ext.oid == ExtensionOID.AUTHORITY_INFORMATION_ACCESS:
                 # list of AccessDescription
-                pass
+                for ad in extobj:
+                    if not isinstance(ad.access_location, x509.UniformResourceIdentifier):
+                        raise InvalidCertificate("Unsupported access_location: %s" % (ad.access_location,))
+                    url = as_unicode(ad.access_location.value)
+
+                    if ad.access_method == AuthorityInformationAccessOID.CA_ISSUERS:
+                        self.issuer_urls.append(url)
+                    elif ad.access_method == AuthorityInformationAccessOID.OCSP:
+                        self.ocsp_urls.append(url)
+                    else:
+                        raise InvalidCertificate("Unsupported access_method: %s" % (ad.access_method,))
             elif ext.oid == ExtensionOID.FRESHEST_CRL:
                 # list of DistributionPoint
-                pass
+                for dp in extobj:
+                    if dp.relative_name:
+                        raise InvalidCertificate("DistributionPoint.relative_name not supported")
+                    if dp.crl_issuer:
+                        raise InvalidCertificate("DistributionPoint.crl_issuer not supported")
+                    if dp.reasons:
+                        raise InvalidCertificate("DistributionPoint.reasons not supported")
+
+                    for gn in extract_gnames(dp.full_name):
+                        if gn.startswith('uri:'):
+                            self.freshest_urls.append(gn[4:])
+                        else:
+                            raise InvalidCertificate("Unsupported DistributionPoint: %s" % (gn,))
             elif ext.oid == ExtensionOID.ISSUING_DISTRIBUTION_POINT:
                 # IssuingDistributionPoint
                 if extobj.only_contains_user_certs:
@@ -1186,6 +1203,22 @@ class CRLInfo:
             ext = x509.IssuingDistributionPoint(**args)
             builder = builder.add_extension(ext, critical=True)
 
+        # AuthorityInformationAccess
+        if self.ocsp_urls or self.issuer_urls:
+            oid = AuthorityInformationAccessOID.OCSP
+            ocsp_list = [x509.AccessDescription(oid, gn) for gn in convert_urls_to_gnames(self.ocsp_urls)]
+            oid = AuthorityInformationAccessOID.CA_ISSUERS
+            ca_list = [x509.AccessDescription(oid, gn) for gn in convert_urls_to_gnames(self.issuer_urls)]
+            ext = x509.AuthorityInformationAccess(ocsp_list + ca_list)
+            builder = builder.add_extension(ext, critical=False)
+
+        # FreshestCRL
+        if self.freshest_urls:
+            full_names = convert_urls_to_gnames(self.freshest_urls)
+            point = x509.DistributionPoint(full_names, None, None, None)
+            ext = x509.FreshestCRL([point])
+            builder = builder.add_extension(ext, critical=False)
+
         return builder
 
     def generate_crl(self, issuer_privkey, issuer_info, days):
@@ -1235,10 +1268,15 @@ class CRLInfo:
             writeln('Last update: %s' % self.last_update.isoformat(' '))
         if self.next_update:
             writeln('Next update: %s' % self.next_update.isoformat(' '))
-        if self.full_methods:
-            show_list('Full Methods', self.full_methods, writeln)
-        if self.relative_methods:
-            show_list('Relative Methods', self.full_methods, writeln)
+        if self.indirect_crl:
+            writeln('Indirect CRL: True')
+        if self.only_some_reasons:
+            show_list('OnlySomeReasons', list(sorted(self.only_some_reasons)), writeln)
+        show_list('Full Methods', self.full_methods, writeln)
+        show_list('Relative Methods', self.relative_methods, writeln)
+        show_list('OCSP URLs', self.ocsp_urls, writeln)
+        show_list('Issuer URLs', self.issuer_urls, writeln)
+        show_list('FreshestCRL URLs', self.freshest_urls, writeln)
 
         for rcert in self.revoked_list:
             rcert.show(writeln)
@@ -1612,7 +1650,7 @@ def update_crl_command(args):
 
     # Load CA info
     issuer_obj = load_cert(args.ca_info)
-    issuer_info = CertInfo(load = issuer_obj)
+    issuer_info = CertInfo(load=issuer_obj)
 
     # Load CA private key
     issuer_key = load_key(args.ca_key, load_password(args.password_file))
@@ -1620,7 +1658,7 @@ def update_crl_command(args):
         die("--ca-key does not match --ca-info data")
 
     if args.crl:
-        crl_info = load_crl(args.crl)
+        crl_info = CRLInfo(load=load_crl(args.crl))
     else:
         crl_info = CRLInfo()
 
@@ -1638,6 +1676,15 @@ def update_crl_command(args):
         invalidity_date = load_date(args.invalidity_date)
 
     revocation_date = datetime.utcnow()
+
+    if args.issuer_urls:
+        crl_info.issuer_urls = parse_list(args.issuer_urls)
+
+    if args.ocsp_urls:
+        crl_info.ocsp_urls = parse_list(args.ocsp_urls)
+
+    if args.freshest_urls:
+        crl_info.freshest_urls = parse_list(args.freshest_urls)
 
     for crt_fn in (args.revoke_certs or []):
         cert = load_cert(crt_fn)
@@ -1778,6 +1825,7 @@ def setup_args():
     g4.add_argument('--reason', help='Reason for revocation')
     g4.add_argument('--invalidity-date', help='Consider certificate invalid from date', metavar='DATE')
     g4.add_argument('--crl-scope', help='CRL scope, one of: all, user, ca, attr.  Default: all', metavar='SCOPE')
+    g4.add_argument('--freshest-urls', help='Freshest CRL URLs', metavar='URLS')
 
     g5 = p.add_argument_group('Command "show"',
                               "Show CSR or CRT file contents.  Takes .crt or .csr filenames as arguments.")

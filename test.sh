@@ -5,8 +5,6 @@ set -e
 # some pgp key that works
 pgp_me=$(sed -n -e '/^default-key /s/^[^ ]* //p' $HOME/.gnupg/gpg.conf)
 
-# both py2 and py3 should work
-sysca='python2 sysca.py'
 sysca='python3 sysca.py'
 
 ## init temp dir
@@ -122,5 +120,47 @@ $sysca selfsign \
 
 $sysca show tmp/selfsigned.crt \
   | sed -e '/:[0-9A-Fa-f][0-9A-Fa-f]:[0-9A-Fa-f][0-9A-Fa-f]:/d' -e '/^----/q'
+
+## update-crl
+
+$sysca new-key ec:secp521r1 --out tmp/crlca.key
+
+$sysca selfsign \
+  --key tmp/crlca.key \
+  --subject '/CN=crlca/' \
+  --crl-url 'http://crl0.example.com , http://crl1.example.com' \
+  --ocsp-url 'http://ocsp0.example.com , http://ocsp1.example.com' \
+  --issuer-url 'http://ftp.example.com/ca.crt, http://ftp2.example.com/ca.crt' \
+  --CA \
+  --days 900 \
+  --out tmp/crlca.crt
+
+$sysca update-crl \
+  --ca-key tmp/crlca.key \
+  --ca-info tmp/crlca.crt \
+  --crl-number 7 \
+  --delta-crl-number 5 \
+  --ocsp-url 'http://ocsp0.example.com , http://ocsp1.example.com' \
+  --issuer-url 'http://ftp.example.com/ca.crt, http://ftp2.example.com/ca.crt' \
+  --days 90 \
+  --out tmp/crl-v1.crl
+
+$sysca update-crl \
+  --crl tmp/crl-v1.crl \
+  --ca-key tmp/crlca.key \
+  --ca-info tmp/crlca.crt \
+  --crl-number 8 \
+  --delta-crl-number 7 \
+  --days 90 \
+  --revoke-serials 1000 2000 \
+  --out tmp/crl-v2.crl
+
+# openssl crl -text -in tmp/crl-v1.crl
+#$sysca show tmp/crl-v1.crl
+$sysca show tmp/crl-v2.crl
+#openssl crl -text -in tmp/crl-v1.crl  \
+#  | sed -e '/:[0-9A-Fa-f][0-9A-Fa-f]:[0-9A-Fa-f][0-9A-Fa-f]:/d' -e '/^----/q'
+#openssl crl -text -in tmp/crl-v2.crl  \
+#  | sed -e '/:[0-9A-Fa-f][0-9A-Fa-f]:[0-9A-Fa-f][0-9A-Fa-f]:/d' -e '/^----/q'
 
 echo "Success."
