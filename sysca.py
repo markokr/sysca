@@ -1455,7 +1455,10 @@ def newkey_command(args):
     keydesc = short.get(keydesc, keydesc)
 
     # create key
-    t, v = keydesc.lower().split(':')
+    tmp = keydesc.lower().split(':')
+    if len(tmp) != 2:
+        die("Bad key spec: %s", keydesc)
+    t, v = tmp
     if t == 'ec':
         try:
             k = new_ec_key(v)
