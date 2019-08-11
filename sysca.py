@@ -58,8 +58,8 @@ class InvalidCertificate(ValueError):
 # Key parameters
 #
 
-MIN_RSA_BITS = 1024
-MAX_RSA_BITS = 8192
+MIN_RSA_BITS = 1536
+MAX_RSA_BITS = 6144
 
 EC_CURVES = {
     'secp192r1': ec.SECP192R1,
