@@ -74,6 +74,22 @@ def test_write_key():
             sysca.load_key(name, 'wrong')
         key2 = sysca.load_key(name, 'password')
         assert sysca.same_pubkey(key, key2)
+
+        # dsa key, unencrypted
+        key = sysca.new_dsa_key()
+        open(name, 'wb').write(sysca.key_to_pem(key))
+        key2 = sysca.load_key(name)
+        assert sysca.same_pubkey(key, key2)
+
+        # dsa key, encrypted
+        key = sysca.new_dsa_key()
+        open(name, 'wb').write(sysca.key_to_pem(key, 'password'))
+        with pytest.raises(TypeError):
+            sysca.load_key(name)
+        with pytest.raises(ValueError):
+            sysca.load_key(name, 'wrong')
+        key2 = sysca.load_key(name, 'password')
+        assert sysca.same_pubkey(key, key2)
     finally:
         os.unlink(name)
 

@@ -16,7 +16,7 @@ import uuid
 from datetime import datetime, timedelta
 
 from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives.asymmetric import ec, rsa
+from cryptography.hazmat.primitives.asymmetric import ec, rsa, dsa
 from cryptography.hazmat.primitives.hashes import SHA256, SHA384, SHA512
 from cryptography.hazmat.primitives.serialization import (
     Encoding, PrivateFormat, PublicFormat,
@@ -388,10 +388,20 @@ def new_rsa_key(bits=2048):
     return rsa.generate_private_key(key_size=bits, public_exponent=65537, backend=get_backend())
 
 
+def new_dsa_key(bits=2048):
+    """New DSA key.
+    """
+    if bits < MIN_RSA_BITS or bits > MAX_RSA_BITS:
+        raise ValueError('Bad value for bits')
+    return dsa.generate_private_key(key_size=bits, backend=get_backend())
+
+
 def valid_pubkey(pubkey):
     """Return True if usable public key.
     """
     if isinstance(pubkey, rsa.RSAPublicKey):
+        return pubkey.key_size >= MIN_RSA_BITS and pubkey.key_size <= MAX_RSA_BITS
+    if isinstance(pubkey, dsa.DSAPublicKey):
         return pubkey.key_size >= MIN_RSA_BITS and pubkey.key_size <= MAX_RSA_BITS
     if isinstance(pubkey, ec.EllipticCurvePublicKey):
         return pubkey.curve.name in EC_CURVES
@@ -407,6 +417,8 @@ def valid_privkey(privkey):
     """
     if isinstance(privkey, rsa.RSAPrivateKey):
         return privkey.key_size >= MIN_RSA_BITS and privkey.key_size <= MAX_RSA_BITS
+    if isinstance(privkey, dsa.DSAPrivateKey):
+        return privkey.key_size >= MIN_RSA_BITS and privkey.key_size <= MAX_RSA_BITS
     if isinstance(privkey, ec.EllipticCurvePrivateKey):
         return privkey.curve.name in EC_CURVES
     if ed25519 is not None and isinstance(privkey, ed25519.Ed25519PrivateKey):
@@ -421,6 +433,8 @@ def get_key_name(key):
     """
     if isinstance(key, (rsa.RSAPublicKey, rsa.RSAPrivateKey)):
         return 'rsa:%d' % key.key_size
+    if isinstance(key, (dsa.DSAPublicKey, dsa.DSAPrivateKey)):
+        return 'dsa:%d' % key.key_size
     if isinstance(key, (ec.EllipticCurvePublicKey, ec.EllipticCurvePrivateKey)):
         return 'ec:%s' % key.curve.name
     if ed25519 is not None and isinstance(key, (ed25519.Ed25519PublicKey, ed25519.Ed25519PrivateKey)):
@@ -1470,7 +1484,7 @@ def newkey_command(args):
     """Create new key.
     """
     # parse key-type argument
-    short = {'ec': 'ec:secp256r1', 'rsa': 'rsa:2048'}
+    short = {'ec': 'ec:secp256r1', 'rsa': 'rsa:2048', 'dsa': 'dsa:2048'}
     if len(args.files) > 1:
         die("Unexpected positional arguments")
     if args.files:
@@ -1492,6 +1506,11 @@ def newkey_command(args):
     elif t == 'rsa':
         try:
             k = new_rsa_key(int(v))
+        except ValueError:
+            die("Invalid value for RSA bits: %s", v)
+    elif t == 'dsa':
+        try:
+            k = new_dsa_key(int(v))
         except ValueError:
             die("Invalid value for RSA bits: %s", v)
     else:
