@@ -186,7 +186,6 @@ def test_crl_passthrough():
     crl.delta_crl_number = 9
     crl.crl_number = 10
     crl.issuer_urls.append('http://issuer_urls')
-    crl.ocsp_urls.append('http://ocsp_urls')
     #crl.freshest_urls.append('http://freshest_urls')
 
     crlobj = crl.generate_crl(ca_key, ca_info, days=30)
@@ -200,9 +199,9 @@ def test_crl_passthrough():
     crl2.show(lst1.append)
     crl3.show(lst2.append)
 
-    assert lst1 == lst2
     lst1 = [zfilter(e) for e in lst1]
     lst2 = [zfilter(e) for e in lst2]
+    assert lst1 == lst2
     assert lst1 == [
         'Issuer Name: /CN=CrlCA/',
         'CRL Scope: all',
@@ -210,7 +209,6 @@ def test_crl_passthrough():
         'Delta CRL Number: 09',
         'Last update: DT',
         'Next update: DT',
-        'OCSP URLs: http://ocsp_urls',
         'Issuer URLs: http://issuer_urls',
     ]
 
