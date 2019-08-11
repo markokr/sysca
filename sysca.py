@@ -11,7 +11,6 @@ import os.path
 import re
 import subprocess
 import sys
-import uuid
 
 from datetime import datetime, timedelta
 
@@ -453,6 +452,15 @@ def get_key_name(key):
     if ed448 is not None and isinstance(key, (ed448.Ed448PublicKey, ed448.Ed448PrivateKey)):
         return 'ec:ed448'
     return '<unknown key type>'
+
+
+def new_serial_number():
+    """Return serial number with max allowed entropy.
+    """
+    # serial should have at least 20 bits of entropy and fit into 20 bytes
+    seed = int.from_bytes(os.urandom(20), "big", signed=False)
+    # avoid sign problems by setting highest bit
+    return (seed >> 1) | (1 << 158)
 
 
 #
@@ -948,7 +956,7 @@ class CertInfo:
         dt_start = dt_now - timedelta(hours=1)
         dt_end = dt_now + timedelta(days=days)
 
-        self.serial_number = int(uuid.uuid4())
+        self.serial_number = new_serial_number()
 
         builder = (x509.CertificateBuilder()
             .subject_name(self.get_name())
