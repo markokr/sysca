@@ -71,6 +71,18 @@ EC_CURVES = {
     'prime256v1': ec.SECP256R1,
 }
 
+# load all curves
+try:
+    from cryptography.hazmat.primitives.asymmetric.ec import EllipticCurveOID, get_curve_for_oid
+    EC_CURVES.update({n.lower(): get_curve_for_oid(getattr(EllipticCurveOID, n)) for n in dir(EllipticCurveOID) if n[0] != '_'})
+except ImportError:
+    pass
+
+def get_curve_for_name(name):
+    """Lookup curve by name.
+    """
+    return EC_CURVES[name.lower()]
+
 #
 # Shortcut maps
 #
@@ -367,6 +379,7 @@ def get_hash_algo(privkey, ctx):
 def new_ec_key(name='secp256r1'):
     """New Elliptic Curve key
     """
+    name = name.lower()
     if name == 'ed25519':
         if ed25519 is not None:
             return ed25519.Ed25519PrivateKey.generate()
@@ -375,9 +388,7 @@ def new_ec_key(name='secp256r1'):
         if ed448 is not None:
             return ed448.Ed448PrivateKey.generate()
         raise ValueError('ed448 not supported')
-    if name not in EC_CURVES:
-        raise ValueError('Unknown curve')
-    return ec.generate_private_key(curve=EC_CURVES[name], backend=get_backend())
+    return ec.generate_private_key(curve=get_curve_for_name(name), backend=get_backend())
 
 
 def new_rsa_key(bits=2048):
@@ -404,7 +415,7 @@ def valid_pubkey(pubkey):
     if isinstance(pubkey, dsa.DSAPublicKey):
         return pubkey.key_size >= MIN_RSA_BITS and pubkey.key_size <= MAX_RSA_BITS
     if isinstance(pubkey, ec.EllipticCurvePublicKey):
-        return pubkey.curve.name in EC_CURVES
+        return True
     if ed25519 is not None and isinstance(pubkey, ed25519.Ed25519PublicKey):
         return True
     if ed448 is not None and isinstance(pubkey, ed448.Ed448PublicKey):
@@ -420,7 +431,7 @@ def valid_privkey(privkey):
     if isinstance(privkey, dsa.DSAPrivateKey):
         return privkey.key_size >= MIN_RSA_BITS and privkey.key_size <= MAX_RSA_BITS
     if isinstance(privkey, ec.EllipticCurvePrivateKey):
-        return privkey.curve.name in EC_CURVES
+        return True
     if ed25519 is not None and isinstance(privkey, ed25519.Ed25519PrivateKey):
         return True
     if ed448 is not None and isinstance(privkey, ed448.Ed448PrivateKey):
@@ -1501,7 +1512,7 @@ def newkey_command(args):
     if t == 'ec':
         try:
             k = new_ec_key(v)
-        except ValueError:
+        except (ValueError, KeyError):
             die("Invalid curve: %s", v)
     elif t == 'rsa':
         try:
