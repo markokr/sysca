@@ -60,16 +60,16 @@ Sign certificate signing request::
                [--out CRT_FN] [--password-file TXT_FILE]
                [--reset ...]
 
-Change CRL file::
+Create or update CRL file::
 
-    sysca update-crl --crl CRL_FILE --ca-key KEY_FILE --ca-info CRT_FILE
-               --days NUM [--out CRT_FN] [--password-file TXT_FILE]
+    sysca update-crl [--crl CRL_FILE] [--out CRT_FN]
+               --ca-key KEY_FILE --ca-info CRT_FILE [--password-file TXT_FILE]
+               --days NUM [--crl-number NUM] [--delta-crl-number NUM]
                [--reason REASON_NAME]
                [--revoke-cert CERT_FILE] ...
                [--revoke-serial SERIAL] ...
-               [--crl-number NUM] [--delta-crl-number NUM]
 
-Display contents of CSR or CRT file::
+Display contents of CRT, CSR or CRL file::
 
     sysca show FILE
 
@@ -81,12 +81,11 @@ new-key
 
 Generate new key.
 
-Takes key type as optional argument.  Value can be either ``ec:<curve>``
-or ``rsa:<bits>``.  Shortcuts: ``ec`` is ``ec:secp256r1``,
-``rsa`` is ``rsa:2048``.  Default: ``ec``.
+Takes key type as optional argument.  Value can be either ``ec:<curve>``,
+``rsa:<bits>`` or ``dsa:<bits>``.  Shortcuts: ``ec`` is ``ec:secp256r1``,
+``rsa`` is ``rsa:2048``, ``dsa`` is ``dsa:2048``.  Default: ``ec``.
 
-Available curves for EC: ``secp256r1``, ``secp384r1``,
-``secp521r1``, ``secp224r1``, ``secp192r1``, ``ed25519``.
+Suggested curves for EC: ``secp256r1``, ``secp384r1``, ``secp521r1``, ``ed25519``.
 
 Options:
 
@@ -145,7 +144,7 @@ Options:
 
 **--path-length**
     Applies only for CA certs - limits how many levels on sub-CAs
-    can exist under generated certificate.  Default: 0.
+    can exist under generated certificate.  Default: Undefined.
 
     Extension: BasicConstraints_.
 
@@ -220,21 +219,18 @@ Options useful only when apps support them:
             If ``key_agreement`` is true, this flag limits use only for data decryption.
 
 **--ocsp-nocheck**
-
     Disable OCSP checking for this certificate.  Used for certificates that
     sign OCSP status replies.
 
     Extension: OCSPNoCheck_.
 
 **--ocsp-must-staple**
-
     Requires that TLS handshake must be done with stapled OCSP response
     using ``status_request`` protocol.
 
     Extension: OCSPMustStaple_.
 
 **--ocsp-must-staple-v2**
-
     Requires that TLS handshake must be done with stapled OCSP response
     using ``status_request_v2`` protocol.
 
@@ -327,8 +323,122 @@ selfsign
 ~~~~~~~~
 
 This commands takes same arguments as ``request`` plus ``--days NUM``.
-By default it avoids adding KeyUsage_ and ExtendedKeyUsage_
-as there are no good defaults.
+Preferable to use with ``--CA`` and ``--usage`` options.
+
+update-crl
+~~~~~~~~~~
+
+Creates or updates Certificate Revocation List file.
+
+CRL file can be either full or delta:
+
+    full
+        Contains full set of revoked certificates.
+        Options: ``--crl-number=CUR``
+    delta
+        Contains only certificates missing from older CRL version.
+        Options: ``--delta-crl-number=OLD --crl-number=CUR``
+
+CRL file can be either direct or indirect:
+
+    direct
+        All revoked certificates belong to signer that issues CRL.
+    indirect
+        Revoked certificates contain reference to actual CA that issued.
+        Set with option: ``--indirect-crl``.
+
+Options for CRL itself:
+
+**--crl FN**
+    Load existing file.  Version numbers are reused unless overrided on command line.
+
+**--out FN**
+    Write output to file.
+
+**--days NUM**
+    Set period that this CRL is valid.
+
+**--ca-key KEY_FILE**
+    CA private key file.  Can be PGP-encrypted.  Can be password-protected.
+
+**--ca-info CRT_FILE**
+    CA certificate used for signing.
+
+**--crl-number VER**
+    Version number for main CRL.
+
+    Extension: CRLNumber_.
+
+**--delta-crl-number VER**
+    Version number of prevous CRL that this delta is from.
+
+    Extension: DeltaCRLNumber_.
+
+**--crl-scope SCOPE**
+    CRL scope, one of: all, user, ca, attr. Default: all
+
+    This flags shows that CRL contains only specific types of certificates.
+
+        all
+            All types.  Default.
+        user
+            Only user certificates.
+        ca
+            Only CA certificates.
+        attr
+            Only attribute certificates.
+
+    Extension: CRLIssuingDistributionPoint_.
+
+**--indirect-crl**
+    CRL list can contain revoked certificates not issued by CRL signer.
+
+    Extension: CRLIssuingDistributionPoint_.
+
+**--issuer-urls URLS**
+    Override issuer URLs.  Default: taken from signer certificate.
+
+    Extension: CRLAuthorityInformationAccess_.
+
+Options for adding entries:
+
+**--revoke-certs FN [FN ...]**
+    Filenames of certificates to add.
+
+**--revoke-serials NUM [NUM ...]**
+    Certificate serial numbers to add.
+
+**--reason REASON**
+    Revocation reason.  Used for all entries added in one command.  One of:
+
+        key_compromise
+            Private key compromise.
+        ca_compromise
+            CA key compromise.
+        affiliation_changed
+            Current certificate is obsolete.  Another CA is being responsible.
+        superseded
+            Current certificate is obsolete.  New certificate has been issued.
+        cessation_of_operation
+            Current certificate is obsolete.  CA shut down.
+        privilege_withdrawn
+            Certificate attributes are not valid anymore.
+        aa_compromise
+            Provider of attributes to certificate has been compromised.
+        certificate_hold
+            Temporary entry, actual reason will follow later.
+        remove_from_crl
+            Certificate should not be in CRL anymore.
+        unspecified
+            Default, means no reason has been provided.
+
+    Extension: CRLReason_.
+
+**--invalidity-date DATE**
+    Consider certificate invalid from date.  Optional, if missing
+    revocation date is used.
+
+    Extension: CRLInvalidityDate_.
 
 show
 ~~~~
@@ -367,14 +477,9 @@ Compatibility notes
 -------------------
 
 Although SysCA allows to set various extension parameters, that does not
-mean any software that uses the certificates actually the looks
-or acts on the extensions.  So it's reasonable to set up only
-extensions that are actually used.
-
-TODO
-----
-
-* CRL management.
+mean any software that uses the certificates actually looks or acts on
+the extensions.  So it's reasonable to set up only extensions that are
+actually used.
 
 .. _Subject: https://tools.ietf.org/html/rfc5280#section-4.1.2.6
 .. _BasicConstraints: https://tools.ietf.org/html/rfc5280#section-4.2.1.9
@@ -391,4 +496,10 @@ TODO
 .. _OCSPNoCheck: https://tools.ietf.org/html/rfc6960
 .. _OCSPMustStaple: https://tools.ietf.org/html/rfc7633
 .. _OCSPMustStapleV2: https://tools.ietf.org/html/rfc7633
+.. _CRLNumber: https://tools.ietf.org/html/rfc5280#section-5.2.3
+.. _DeltaCRLNumber: https://tools.ietf.org/html/rfc5280#section-5.2.4
+.. _CRLAuthorityInformationAccess: https://tools.ietf.org/html/rfc5280#section-5.2.7
+.. _CRLIssuingDistributionPoint: https://tools.ietf.org/html/rfc5280#section-5.2.5
+.. _CRLReason: https://tools.ietf.org/html/rfc5280#section-5.3.1
+.. _CRLInvalidityDate: https://tools.ietf.org/html/rfc5280#section-5.3.2
 
