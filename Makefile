@@ -16,6 +16,14 @@ sdist:
 	rm -f dist/*
 	python3 setup.py sdist
 
+clitests:
+	./tests/cli/test_basics.sh
+	#./tests/cli/test_gpg.sh
+	./tests/cli/test_keys.sh
+	./tests/cli/test_selfsign.sh
+	./tests/cli/test_crl_direct.sh
+	./tests/cli/test_crl_indirect.sh
+
 upload:
 	twine upload dist/*
 
