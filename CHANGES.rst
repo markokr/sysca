@@ -1,6 +1,16 @@
 Version history
 ===============
 
+1.3
+---
+
+* [feature] Support DSA keys
+* [feature] Support all EC curves
+* [fix] Prepare for ed25519 keys, requires ``cryptography`` 2.8+
+* [fix] CRL handling fixes
+* [fix] Do not set path-length by default for CAs.
+* [fix] Use 20 byte serial number instead 16.
+
 1.2
 ---
 
