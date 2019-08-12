@@ -1039,8 +1039,11 @@ class RevCertInfo:
             self.reason = reason
             self.revocation_date = revocation_date
             self.invalidity_date = invalidity_date
+            self.issuer_gnames = issuer_gnames
         else:
             self.load_from_existing(load)
+            if not self.issuer_gnames:
+                self.issuer_gnames = issuer_gnames
 
     def generate_rcert(self, indirect_crl, cur_gnames):
         """Return x509.RevokedCertificate
@@ -1110,7 +1113,7 @@ class RevCertInfo:
             writeln('  Invalidity Date: %s' % self.invalidity_date.isoformat(' '))
         if self.reason is not None:
             writeln('  Reason: %s' % self.reason)
-        show_list('Issuer GNames', self.issuer_gnames, writeln)
+        show_list('  Issuer GNames', self.issuer_gnames, writeln)
 
 
 class CRLInfo:
