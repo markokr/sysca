@@ -41,10 +41,10 @@ __version__ = '1.3'
 
 __all__ = [
     'CertInfo', 'RevCertInfo', 'CRLInfo',
-    'InvalidCertificate',
+    'InvalidCertificate', 'UnsupportedParameter',
     'load_key', 'load_req', 'load_cert', 'load_crl',
     'key_to_pem', 'cert_to_pem', 'req_to_pem', 'crl_to_pem',
-    'new_ec_key', 'new_rsa_key',
+    'new_ec_key', 'new_rsa_key', 'new_dsa_key',
     'load_gpg_file', 'load_password',
     'create_x509_req', 'create_x509_cert', 'create_x509_crl',
     'run_sysca'
@@ -53,21 +53,28 @@ __all__ = [
 class InvalidCertificate(ValueError):
     """Invalid input for certificate."""
 
+class UnsupportedParameter(ValueError):
+    """Invalid parameter."""
+
 #
 # Key parameters
 #
 
-MIN_RSA_BITS = 1536
-MAX_RSA_BITS = 6144
+UNSAFE = False
 
+# safe choices
+SAFE_BITS_RSA = (2048, 3072, 4096)
+SAFE_BITS_DSA = (2048, 3072)
+SAFE_CURVES = ('secp256r1', 'secp384r1', 'secp521r1', 'ed25519', 'ed448',
+               'brainpoolp256r1', 'brainpoolp384r1', 'brainpoolp512r1')
+
+# supported curves
 EC_CURVES = {
     'secp192r1': ec.SECP192R1,
     'secp224r1': ec.SECP224R1,
     'secp256r1': ec.SECP256R1,
     'secp384r1': ec.SECP384R1,
     'secp521r1': ec.SECP521R1,
-    # aliases
-    'prime256v1': ec.SECP256R1,
 }
 
 # load all curves
@@ -80,7 +87,10 @@ except ImportError:
 def get_curve_for_name(name):
     """Lookup curve by name.
     """
-    return EC_CURVES[name.lower()]
+    name2 = name.lower()
+    if name2 not in EC_CURVES:
+        raise UnsupportedParameter("Unknown curve: %s" % name)
+    return EC_CURVES[name2]
 
 #
 # Shortcut maps
@@ -379,6 +389,27 @@ def get_hash_algo(privkey, ctx):
     return SHA256()
 
 
+def is_safe_bits(bits, bitlist):
+    """Allow bits"""
+    return UNSAFE or bits in bitlist
+
+
+def is_safe_curve(name):
+    """Allow curve"""
+    return UNSAFE or name.lower() in SAFE_CURVES
+
+
+def get_ec_curves():
+    """Return supported curve names.
+    """
+    lst = list(EC_CURVES.keys())
+    if ed25519 is not None:
+        lst.append('ed25519')
+    if ed448 is not None:
+        lst.append('ed448')
+    return [n for n in sorted(lst) if is_safe_curve(n)]
+
+
 def new_ec_key(name='secp256r1'):
     """New Elliptic Curve key
     """
@@ -386,27 +417,30 @@ def new_ec_key(name='secp256r1'):
     if name == 'ed25519':
         if ed25519 is not None:
             return ed25519.Ed25519PrivateKey.generate()
-        raise ValueError('ed25519 not supported')
+        raise UnsupportedParameter('ed25519 not supported')
     if name == 'ed448':
         if ed448 is not None:
             return ed448.Ed448PrivateKey.generate()
-        raise ValueError('ed448 not supported')
-    return ec.generate_private_key(curve=get_curve_for_name(name), backend=get_backend())
+        raise UnsupportedParameter('ed448 not supported')
+    curve = get_curve_for_name(name)
+    if not is_safe_curve(curve.name):
+        raise UnsupportedParameter('Unsafe curve: %s' % curve.name)
+    return ec.generate_private_key(curve=curve, backend=get_backend())
 
 
 def new_rsa_key(bits=2048):
     """New RSA key.
     """
-    if bits < MIN_RSA_BITS or bits > MAX_RSA_BITS:
-        raise ValueError('Bad value for bits')
+    if not is_safe_bits(bits, SAFE_BITS_RSA):
+        raise UnsupportedParameter('Bad value for RSA bits: %d' % bits)
     return rsa.generate_private_key(key_size=bits, public_exponent=65537, backend=get_backend())
 
 
 def new_dsa_key(bits=2048):
     """New DSA key.
     """
-    if bits < MIN_RSA_BITS or bits > MAX_RSA_BITS:
-        raise ValueError('Bad value for bits')
+    if not is_safe_bits(bits, SAFE_BITS_DSA):
+        raise UnsupportedParameter('Bad value for DSA bits: %d' % bits)
     return dsa.generate_private_key(key_size=bits, backend=get_backend())
 
 
@@ -414,11 +448,11 @@ def valid_pubkey(pubkey):
     """Return True if usable public key.
     """
     if isinstance(pubkey, rsa.RSAPublicKey):
-        return pubkey.key_size >= MIN_RSA_BITS and pubkey.key_size <= MAX_RSA_BITS
+        return is_safe_bits(pubkey.key_size, SAFE_BITS_RSA)
     if isinstance(pubkey, dsa.DSAPublicKey):
-        return pubkey.key_size >= MIN_RSA_BITS and pubkey.key_size <= MAX_RSA_BITS
+        return is_safe_bits(pubkey.key_size, SAFE_BITS_DSA)
     if isinstance(pubkey, ec.EllipticCurvePublicKey):
-        return True
+        return is_safe_curve(pubkey.curve.name)
     if ed25519 is not None and isinstance(pubkey, ed25519.Ed25519PublicKey):
         return True
     if ed448 is not None and isinstance(pubkey, ed448.Ed448PublicKey):
@@ -430,11 +464,11 @@ def valid_privkey(privkey):
     """Return True if usable private key.
     """
     if isinstance(privkey, rsa.RSAPrivateKey):
-        return privkey.key_size >= MIN_RSA_BITS and privkey.key_size <= MAX_RSA_BITS
+        return is_safe_bits(privkey.key_size, SAFE_BITS_RSA)
     if isinstance(privkey, dsa.DSAPrivateKey):
-        return privkey.key_size >= MIN_RSA_BITS and privkey.key_size <= MAX_RSA_BITS
+        return is_safe_bits(privkey.key_size, SAFE_BITS_DSA)
     if isinstance(privkey, ec.EllipticCurvePrivateKey):
-        return True
+        return is_safe_curve(privkey.curve.name)
     if ed25519 is not None and isinstance(privkey, ed25519.Ed25519PrivateKey):
         return True
     if ed448 is not None and isinstance(privkey, ed448.Ed448PrivateKey):
@@ -1526,20 +1560,11 @@ def newkey_command(args):
         die("Bad key spec: %s", keydesc)
     t, v = tmp
     if t == 'ec':
-        try:
-            k = new_ec_key(v)
-        except (ValueError, KeyError):
-            die("Invalid curve: %s", v)
+        k = new_ec_key(v)
     elif t == 'rsa':
-        try:
-            k = new_rsa_key(int(v))
-        except ValueError:
-            die("Invalid value for RSA bits: %s", v)
+        k = new_rsa_key(int(v))
     elif t == 'dsa':
-        try:
-            k = new_dsa_key(int(v))
-        except ValueError:
-            die("Invalid value for RSA bits: %s", v)
+        k = new_dsa_key(int(v))
     else:
         die('Bad key type: %s', t)
     msg("New key: %s", keydesc)
@@ -1852,6 +1877,7 @@ def setup_args():
     p.add_argument('--text', help='Add human-readable text about output', action='store_true')
     p.add_argument('--out', help='File to write output to, instead stdout', metavar='FN')
     p.add_argument('--quiet', '-q', help='Be quiet', action='store_true')
+    p.add_argument('--unsafe', help='Allow unsafe parameters', action='store_true')
     p.add_argument('command', help=argparse.SUPPRESS)
 
     p.add_argument_group('Command "new-key"',
@@ -1917,12 +1943,16 @@ def setup_args():
 def run_sysca(argv):
     """Load arguments, select and run command.
     """
-    global QUIET
+    global QUIET, UNSAFE
 
     ap = setup_args()
     args = ap.parse_args(argv)
+
     if args.quiet:
         QUIET = True
+    if args.unsafe:
+        UNSAFE = True
+
     if args.command == 'new-key':
         newkey_command(args)
     elif args.command == 'request':
@@ -1935,6 +1965,8 @@ def run_sysca(argv):
         update_crl_command(args)
     elif args.command == 'show':
         show_command(args)
+    elif args.command == 'show-curves':
+        print("%s" % '\n'.join(get_ec_curves()))
     else:
         die("Unknown command: %s", args.command)
 
@@ -1944,7 +1976,7 @@ def main():
     """
     try:
         return run_sysca(sys.argv[1:])
-    except InvalidCertificate as ex:
+    except ValueError as ex:
         die(str(ex))
 
 

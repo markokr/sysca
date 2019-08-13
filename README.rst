@@ -444,6 +444,11 @@ show
 
 Display contents of CSR or CRT file.
 
+show-curves
+~~~~~~~~~~~
+
+List supported safe curves.  Needs ``--unsafe`` flag to show all supported curves.
+
 Private Key Protection
 ----------------------
 

@@ -7,9 +7,9 @@ test:
 	tox -e py3-cryptography21
 	tox -e py3-cryptography22
 	tox -e py3-cryptography23
-	tox -e py3-cryptography24
-	tox -e py3-cryptography25
-	tox -e py3-cryptography26
+	tox -e py36-cryptography24
+	tox -e py37-cryptography25
+	tox -e py38-cryptography26
 	tox -e py3-cryptography27
 
 sdist:
