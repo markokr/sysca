@@ -13,18 +13,16 @@ Features
 - Good defaults, sets up common extensions automatically.
 - PGP- and password-protected private keys.
 - OCSP and CRL info settings.
-- Supports both EC and RSA keys.
+- Supports EC, RSA and DSA keys.
 
 Dependencies
 ------------
 
 - Python `cryptography`_ module (version >= 2.1).
 - (Optional) `gpg`_ command-line tool to decrypt files.
-- (Optional) `openssl`_ command-line tool to show CRT/CSR contents.
 
 .. _cryptography: https://cryptography.io/
 .. _gpg: https://www.gnupg.org/
-.. _openssl: https://www.openssl.org/
 
 Summary
 -------
@@ -34,6 +32,7 @@ Generate new key::
     sysca new-key              [--password-file TXT_FILE] [--out DST]
     sysca new-key ec[:<curve>] [--password-file TXT_FILE] [--out DST]
     sysca new-key rsa[:<bits>] [--password-file TXT_FILE] [--out DST]
+    sysca new-key dsa[:<bits>] [--password-file TXT_FILE] [--out DST]
 
 Create certificate signing request::
 

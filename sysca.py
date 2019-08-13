@@ -1855,8 +1855,8 @@ def setup_args():
     p.add_argument('command', help=argparse.SUPPRESS)
 
     p.add_argument_group('Command "new-key"',
-                         "Generate new EC or RSA key.  Key type can be either ec:<curve> "
-                         "or rsa:<bits>.  Default: ec:secp256r1.")
+                         "Generate new EC, RSA or DSA key.  Key type can be either ec:<curve>, "
+                         "rsa:<bits> or dsa:<bits>.  Default: ec:secp256r1.")
 
     g2 = p.add_argument_group('Command "request" and "selfsign"',
                               "Create certificate request or selfsigned certificate for private key")
