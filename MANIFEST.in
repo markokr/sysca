@@ -1,3 +1,4 @@
-include tests/*.py test.sh
+include tests/*.py
+include tests/cli/*.sh
 include tox.ini .pylintrc
 include MANIFEST.in LICENSE.txt README.rst CHANGES.rst
