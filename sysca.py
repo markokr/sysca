@@ -50,8 +50,10 @@ __all__ = [
     'run_sysca'
 ]
 
+
 class InvalidCertificate(ValueError):
     """Invalid input for certificate."""
+
 
 class UnsupportedParameter(ValueError):
     """Invalid parameter."""
@@ -59,6 +61,7 @@ class UnsupportedParameter(ValueError):
 #
 # Key parameters
 #
+
 
 UNSAFE = False
 
@@ -80,9 +83,11 @@ EC_CURVES = {
 # load all curves
 try:
     from cryptography.hazmat.primitives.asymmetric.ec import EllipticCurveOID, get_curve_for_oid
-    EC_CURVES.update({n.lower(): get_curve_for_oid(getattr(EllipticCurveOID, n)) for n in dir(EllipticCurveOID) if n[0] != '_'})
+    EC_CURVES.update({n.lower(): get_curve_for_oid(getattr(EllipticCurveOID, n))
+                      for n in dir(EllipticCurveOID) if n[0] != '_'})
 except ImportError:
     pass
+
 
 def get_curve_for_name(name):
     """Lookup curve by name.
@@ -95,6 +100,7 @@ def get_curve_for_name(name):
 #
 # Shortcut maps
 #
+
 
 DN_CODE_TO_OID = {
     'CN': NameOID.COMMON_NAME,
@@ -157,12 +163,12 @@ XKU_CODE_TO_OID = {
 # minimal KeyUsage defaults to add when ExtendedKeyUsage is given
 XKU_DEFAULTS = {
     'any': ['digital_signature', 'key_encipherment', 'key_agreement', 'content_commitment', 'data_encipherment', 'key_cert_sign', 'crl_sign'],
-    'server': ['digital_signature'], # key_agreement, key_encipherment
-    'client': ['digital_signature'], # key_agreement
-    'code': ['digital_signature'], # -
-    'email': ['digital_signature'], # content_commitment, key_agreement, key_encipherment
-    'time': ['digital_signature'], # content_commitment
-    'ocsp': ['digital_signature'], # content_commitment
+    'server': ['digital_signature'],    # key_agreement, key_encipherment
+    'client': ['digital_signature'],    # key_agreement
+    'code': ['digital_signature'],      # -
+    'email': ['digital_signature'],     # content_commitment, key_agreement, key_encipherment
+    'time': ['digital_signature'],      # content_commitment
+    'ocsp': ['digital_signature'],      # content_commitment
 
     'encipher_only': ['key_agreement'],
     'decipher_only': ['key_agreement'],
@@ -218,7 +224,7 @@ def serial_str(snum):
     """Format certificate serial number as string.
     """
     s = '%x' % snum
-    s = '0'*(len(s)&1) + s
+    s = '0' * (len(s) & 1) + s
     s = re.sub(r'..', r':\g<0>', s).strip(':')
     return s
 
@@ -609,15 +615,14 @@ def load_gnames(gname_list):
 
 
 def make_key_usage(digital_signature=False, content_commitment=False, key_encipherment=False,
-                  data_encipherment=False, key_agreement=False, key_cert_sign=False,
-                  crl_sign=False, encipher_only=False, decipher_only=False):
+                   data_encipherment=False, key_agreement=False, key_cert_sign=False,
+                   crl_sign=False, encipher_only=False, decipher_only=False):
     """Default arguments for KeyUsage.
     """
     return x509.KeyUsage(digital_signature=digital_signature, content_commitment=content_commitment,
-            key_encipherment=key_encipherment, data_encipherment=data_encipherment,
-            key_agreement=key_agreement, key_cert_sign=key_cert_sign, crl_sign=crl_sign,
-            encipher_only=encipher_only, decipher_only=decipher_only)
-
+                         key_encipherment=key_encipherment, data_encipherment=data_encipherment,
+                         key_agreement=key_agreement, key_cert_sign=key_cert_sign, crl_sign=crl_sign,
+                         encipher_only=encipher_only, decipher_only=decipher_only)
 
 
 def key_to_pem(key, password=None):
@@ -668,6 +673,7 @@ def make_issuer_gnames(subject, san):
 #
 # Info objects
 #
+
 
 class CertInfo:
     """Container for certificate fields.
@@ -984,7 +990,9 @@ class CertInfo:
         builder = self.install_extensions(builder)
 
         # create final request
-        req = builder.sign(private_key=privkey, algorithm=get_hash_algo(privkey, 'CSR'), backend=get_backend())
+        req = builder.sign(private_key=privkey,
+                           algorithm=get_hash_algo(privkey, 'CSR'),
+                           backend=get_backend())
         return req
 
     def generate_certificate(self, subject_pubkey, issuer_info, issuer_privkey, days):
@@ -997,12 +1005,12 @@ class CertInfo:
         self.serial_number = new_serial_number()
 
         builder = (x509.CertificateBuilder()
-            .subject_name(self.get_name())
-            .issuer_name(issuer_info.get_name())
-            .not_valid_before(dt_start)
-            .not_valid_after(dt_end)
-            .serial_number(self.serial_number)
-            .public_key(subject_pubkey))
+                   .subject_name(self.get_name())
+                   .issuer_name(issuer_info.get_name())
+                   .not_valid_before(dt_start)
+                   .not_valid_after(dt_end)
+                   .serial_number(self.serial_number)
+                   .public_key(subject_pubkey))
 
         builder = self.install_extensions(builder)
 
@@ -1020,7 +1028,9 @@ class CertInfo:
             builder = builder.add_extension(ext, critical=False)
 
         # final cert
-        cert = builder.sign(private_key=issuer_privkey, algorithm=get_hash_algo(issuer_privkey, 'CRT'), backend=get_backend())
+        cert = builder.sign(private_key=issuer_privkey,
+                            algorithm=get_hash_algo(issuer_privkey, 'CRT'),
+                            backend=get_backend())
         return cert
 
     def show(self, writeln):
@@ -1351,7 +1361,9 @@ class CRLInfo:
             builder = builder.add_revoked_certificate(rcert)
             cur_gnames = rev_cert.issuer_gnames
 
-        crl = builder.sign(private_key=issuer_privkey, algorithm=get_hash_algo(issuer_privkey, 'CRL'), backend=get_backend())
+        crl = builder.sign(private_key=issuer_privkey,
+                           algorithm=get_hash_algo(issuer_privkey, 'CRL'),
+                           backend=get_backend())
         return crl
 
     def show(self, writeln):
@@ -1435,6 +1447,7 @@ def create_x509_crl(issuer_privkey, issuer_info, crl_info, days):
 #
 # Command-line UI
 #
+
 
 def load_gpg_file(fn):
     """Decrypt file.
@@ -1709,7 +1722,8 @@ def sign_command(args):
         die("--ca-private-key does not match --ca-info data")
 
     # Certificate generation
-    cert = do_sign(subject_csr, issuer_obj, issuer_key, args.days, args.path_length, args.request, reset_info=reset_info)
+    cert = do_sign(subject_csr, issuer_obj, issuer_key, args.days,
+                   args.path_length, args.request, reset_info=reset_info)
 
     # Write certificate
     do_output(cert_to_pem(cert), args, 'x509')
@@ -1861,17 +1875,20 @@ def version_info():
     return '%s %s (cryptography %s, %s)' % ('%(prog)s', __version__, crypto_version, bver)
 
 
+USAGE = """%(prog)s --help | --version
+       %(prog)s new-key [KEY_TYPE] [--password-file FN] [--out FN]
+       %(prog)s request --key KEY_FILE [--subject DN] [--san ALT] [...]
+       %(prog)s selfsign --key KEY_FILE --days N [--subject DN] [--san ALT] [...]
+       %(prog)s sign --request FN --ca-key FN --ca-info FN --days N [--reset] [...]
+       %(prog)s update-crl --ca-key FN --ca-info FN [--crl FN] [...]
+       %(prog)s show FILE
+"""
+
+
 def setup_args():
     """Create ArgumentParser
     """
-    p = argparse.ArgumentParser(description=__doc__.strip(), fromfile_prefix_chars='@',
-                                usage="%(prog)s --help | --version\n" +
-                                "       %(prog)s new-key [KEY_TYPE] [--password-file FN] [--out FN]\n" +
-                                "       %(prog)s request --key KEY_FILE [--subject DN] [--san ALT] [...]\n" +
-                                "       %(prog)s selfsign --key KEY_FILE --days N [--subject DN] [--san ALT] [...]\n" +
-                                "       %(prog)s sign --request FN --ca-key FN --ca-info FN --days N [--reset] [...]\n" +
-                                "       %(prog)s update-crl --ca-key FN --ca-info FN [--crl FN] [...]\n" +
-                                "       %(prog)s show FILE")
+    p = argparse.ArgumentParser(description=__doc__.strip(), usage=USAGE, fromfile_prefix_chars='@')
     p.add_argument('--version', help='show version and exit', action='version', version=version_info())
     p.add_argument('--password-file', help='File to load password from', metavar='FN')
     p.add_argument('--text', help='Add human-readable text about output', action='store_true')
@@ -1906,7 +1923,8 @@ def setup_args():
     g2.add_argument('--issuer-urls', help='URLs for issuer cert.', metavar='URLS')
     g2.add_argument('--permit-subtrees', help='Allowed NameConstraints.', metavar='GNAMES')
     g2.add_argument('--exclude-subtrees', help='Disallowed NameConstraints.', metavar='GNAMES')
-    g2.add_argument('--inhibit-any', help='Number of levels after which "any" policy is ignored.', metavar='N', type=int)
+    g2.add_argument('--inhibit-any', help='Number of levels after which "any" policy is ignored.',
+                    metavar='N', type=int)
 
     g3 = p.add_argument_group('Command "sign"',
                               "Create certificate for key in certificate request.  "
@@ -1982,4 +2000,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
