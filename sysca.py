@@ -1211,9 +1211,10 @@ class CRLInfo:
                     self.crl_scope = 'all'
 
                 self.indirect_crl = extobj.indirect_crl
-
                 self.full_methods = extract_gnames(extobj.full_name)
                 self.relative_methods = extract_gnames(extobj.relative_name)
+                if extobj.only_some_reasons:
+                    self.only_some_reasons = set(CRL_REASON_MAP[f] for f in extobj.only_some_reasons)
             else:
                 raise InvalidCertificate("Unsupported extension in CRL: %s" % (ext,))
 
@@ -1742,6 +1743,8 @@ def update_crl_command(args):
         crl_info.delta_crl_number = load_number(args.delta_crl_number)
     if args.indirect_crl:
         crl_info.indirect_crl = True
+    if args.crl_reasons:
+        crl_info.only_some_reasons = set(parse_list(args.crl_reasons))
 
     reason = None
     if args.reason:

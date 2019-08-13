@@ -69,6 +69,7 @@ sysca update-crl \
   --crl-number 1 \
   --days 90 \
   --indirect-crl \
+  --crl-reasons 'key_compromise, ca_compromise' \
   --out tmp/${pfx}_v1.crl \
   --revoke-certs \
     tmp/${pfx}_ca_user1.crt \
