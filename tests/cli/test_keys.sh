@@ -4,7 +4,12 @@ set -e
 
 . $(dirname $0)/lib.sh
 
-for ktype in rsa:2048 rsa:3072 dsa:2048 dsa:3072 ec:secp256r1 ec:secp384r1 ec:secp521r1; do
+ec_list=""
+for curve in $(sysca show-curves); do
+  ec_list="${ec_list} ec:${curve}"
+done
+
+for ktype in ${ec_list} rsa:2048 rsa:3072 rsa:4096 dsa:2048 dsa:3072; do
   pfx="keys_${ktype}"
   echo "## ${ktype} ##"
   sysca new-key "${ktype}" --out "tmp/${pfx}_ca.key"
@@ -21,5 +26,14 @@ for ktype in rsa:2048 rsa:3072 dsa:2048 dsa:3072 ec:secp256r1 ec:secp384r1 ec:se
     --days 300 \
     --out tmp/${pfx}_ca.crt
 
+  sysca update-crl \
+    --ca-key tmp/${pfx}_ca.key \
+    --ca-info tmp/${pfx}_ca.crt \
+    --days 300 \
+    --crl-number 1 \
+    --revoke-serials 9 \
+    --out tmp/${pfx}_crl.crl
+
+  #sysca --text show tmp/${pfx}_crl.crl
 done
 
