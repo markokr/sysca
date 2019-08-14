@@ -187,16 +187,16 @@ NONCA_DEFAULTS = {
 
 # CRL reason
 CRL_REASON = {
-    "unspecified": x509.ReasonFlags.unspecified,
     "key_compromise": x509.ReasonFlags.key_compromise,
     "ca_compromise": x509.ReasonFlags.ca_compromise,
-    "affiliation_changed": x509.ReasonFlags.affiliation_changed,
+    "aa_compromise": x509.ReasonFlags.aa_compromise,
+    "privilege_withdrawn": x509.ReasonFlags.privilege_withdrawn,
     "superseded": x509.ReasonFlags.superseded,
+    "affiliation_changed": x509.ReasonFlags.affiliation_changed,
     "cessation_of_operation": x509.ReasonFlags.cessation_of_operation,
     "certificate_hold": x509.ReasonFlags.certificate_hold,
-    "privilege_withdrawn": x509.ReasonFlags.privilege_withdrawn,
-    "aa_compromise": x509.ReasonFlags.aa_compromise,
     "remove_from_crl": x509.ReasonFlags.remove_from_crl,
+    "unspecified": x509.ReasonFlags.unspecified,
 }
 
 CRL_REASON_MAP = {v: k for k, v in CRL_REASON.items()}
@@ -1889,12 +1889,19 @@ def setup_args():
     """Create ArgumentParser
     """
     p = argparse.ArgumentParser(description=__doc__.strip(), usage=USAGE, fromfile_prefix_chars="@")
-    p.add_argument("--version", help="show version and exit", action="version", version=version_info())
-    p.add_argument("--password-file", help="File to load password from", metavar="FN")
-    p.add_argument("--text", help="Add human-readable text about output", action="store_true")
-    p.add_argument("--out", help="File to write output to, instead stdout", metavar="FN")
-    p.add_argument("--quiet", "-q", help="Be quiet", action="store_true")
-    p.add_argument("--unsafe", help="Allow unsafe parameters", action="store_true")
+
+    p.add_argument("--version", action="version", version=version_info(),
+                   help="Show version and exit")
+    p.add_argument("--password-file", metavar="FN",
+                   help="File to load password from")
+    p.add_argument("--text", action="store_true",
+                   help="Add human-readable text about output")
+    p.add_argument("--out", metavar="FN",
+                   help="File to write output to, instead stdout")
+    p.add_argument("--quiet", "-q", action="store_true",
+                   help="Be quiet")
+    p.add_argument("--unsafe", action="store_true",
+                   help="Allow unsafe parameters")
     p.add_argument("command", help=argparse.SUPPRESS)
 
     p.add_argument_group("Command 'new-key'",
@@ -1903,52 +1910,83 @@ def setup_args():
 
     g2 = p.add_argument_group("Command 'request' and 'selfsign'",
                               "Create certificate request or selfsigned certificate for private key")
-    g2.add_argument("--key", help="Private key file", metavar="FN")
+
+    g2.add_argument("--key", metavar="FN",
+                    help="Private key file")
 
     g2 = p.add_argument_group("Certificate fields")
-    g2.add_argument("--subject", help="Subject Distinguished Name - /CN=foo/O=Org/OU=Web/")
-    g2.add_argument("--san",
-                    help="SubjectAltNames - dns:hostname, email:addrspec, ip:ipaddr, uri:url, dn:DirName.",
-                    metavar="GNAMES")
-    g2.add_argument("--CA", help="Request CA cert.  Default: not set.", action="store_true")
-    g2.add_argument("--path-length", help="Max levels of sub-CAs.  Default: 0",
-                    type=int, default=None, metavar="DEPTH")
-    g2.add_argument("--usage", help="Keywords: client, server, code, email, time, ocsp.")
-    g2.add_argument("--ocsp-urls", help="URLs for OCSP info.", metavar="URLS")
-    g2.add_argument("--ocsp-nocheck", help="Disable OCSP check.", action="store_true")
-    g2.add_argument("--ocsp-must-staple", help="OCSP Must-Staple.", action="store_true")
-    g2.add_argument("--ocsp-must-staple-v2", help="OCSP Must-Staple V2.", action="store_true")
-    g2.add_argument("--crl-urls", help="URLs URL for CRL data.", metavar="URLS")
-    g2.add_argument("--issuer-urls", help="URLs for issuer cert.", metavar="URLS")
-    g2.add_argument("--permit-subtrees", help="Allowed NameConstraints.", metavar="GNAMES")
-    g2.add_argument("--exclude-subtrees", help="Disallowed NameConstraints.", metavar="GNAMES")
-    g2.add_argument("--inhibit-any", help="Number of levels after which 'any' policy is ignored.",
-                    metavar="N", type=int)
+
+    g2.add_argument("--subject",
+                    help="Subject Distinguished Name - /CN=foo/O=Org/OU=Web/")
+    g2.add_argument("--san", metavar="GNAMES",
+                    help="SubjectAltNames - dns:hostname, email:addrspec, ip:ipaddr, uri:url, dn:DirName.")
+    g2.add_argument("--CA", action="store_true",
+                    help="Request CA cert.  Default: not set.")
+    g2.add_argument("--path-length", type=int, default=None, metavar="DEPTH",
+                    help="Max levels of sub-CAs.  Default: 0")
+    g2.add_argument("--usage",
+                    help="Keywords: client, server, code, email, time, ocsp.")
+    g2.add_argument("--ocsp-urls", metavar="URLS",
+                    help="URLs for OCSP info.")
+    g2.add_argument("--ocsp-nocheck", action="store_true",
+                    help="Disable OCSP check.")
+    g2.add_argument("--ocsp-must-staple", action="store_true",
+                    help="OCSP Must-Staple.")
+    g2.add_argument("--ocsp-must-staple-v2", action="store_true",
+                    help="OCSP Must-Staple V2.")
+    g2.add_argument("--crl-urls", metavar="URLS",
+                    help="URLs URL for CRL data.")
+    g2.add_argument("--issuer-urls", metavar="URLS",
+                    help="URLs for issuer cert.")
+    g2.add_argument("--permit-subtrees", metavar="GNAMES",
+                    help="Allowed NameConstraints.")
+    g2.add_argument("--exclude-subtrees", metavar="GNAMES",
+                    help="Disallowed NameConstraints.")
+    g2.add_argument("--inhibit-any", metavar="N", type=int,
+                    help="Number of levels after which 'any' policy is ignored.")
 
     g3 = p.add_argument_group("Command 'sign'",
                               "Create certificate for key in certificate request.  "
                               "All metadata is taken from certificate request file.")
-    g3.add_argument("--request", help="Filename of certificate request (CSR) to be signed.", metavar="FN")
-    g3.add_argument("--reset", help="Rewrite all info fields.  Default: no.", action="store_true")
-    g3.add_argument("--ca-key", help="Private key file.", metavar="FN")
-    g3.add_argument("--ca-info", help="Filename of CA details (CRT or CSR).", metavar="FN")
-    g3.add_argument("--days", help="Certificate lifetime in days", type=int)
+
+    g3.add_argument("--request", metavar="FN",
+                    help="Filename of certificate request (CSR) to be signed.")
+
+    g3.add_argument("--reset", action="store_true",
+                    help="Rewrite all info fields.  Default: no.")
+    g3.add_argument("--ca-key", metavar="FN",
+                    help="Private key file.")
+    g3.add_argument("--ca-info", metavar="FN",
+                    help="Filename of CA details (CRT or CSR).")
+    g3.add_argument("--days", type=int,
+                    help="Certificate lifetime in days")
 
     g4 = p.add_argument_group("Command 'update-crl'",
                               "Create/update certificate revocation list.  "
                               "CA key is given by: --ca-key, --ca-info.  Lifetime by --days."
                               )
-    g4.add_argument("--crl", help="Filename of certificate revocation list (CRL) to be updated.", metavar="FN")
-    g4.add_argument("--crl-number", help="Version number for main CRL", metavar="VER")
-    g4.add_argument("--delta-crl-number", help="Version number for parent CRL", metavar="VER")
-    g4.add_argument("--revoke-certs", help="Certificate files to add", metavar="FN", nargs="+")
-    g4.add_argument("--revoke-serials", help="Certificate serial numbers to add", metavar="NUM", nargs="+")
-    g4.add_argument("--reason", help="Reason for revocation")
-    g4.add_argument("--invalidity-date", help="Consider certificate invalid from date", metavar="DATE")
-    g4.add_argument("--crl-scope", help="CRL scope, one of: all, user, ca, attr.  Default: all", metavar="SCOPE")
-    g4.add_argument("--crl-reasons", help="Limit CRL scope to only list of reasons", metavar="REASONS")
-    g4.add_argument("--freshest-urls", help="Freshest CRL URLs", metavar="URLS")
-    g4.add_argument("--indirect-crl", help="Set Indirect-CRL flag", action="store_true")
+    g4.add_argument("--crl", metavar="FN",
+                    help="Filename of certificate revocation list (CRL) to be updated.")
+    g4.add_argument("--crl-number", metavar="VER",
+                    help="Version number for main CRL")
+    g4.add_argument("--delta-crl-number", metavar="VER",
+                    help="Version number for parent CRL")
+    g4.add_argument("--revoke-certs", metavar="FN", nargs="+",
+                    help="Certificate files to add")
+    g4.add_argument("--revoke-serials", metavar="NUM", nargs="+",
+                    help="Certificate serial numbers to add")
+    g4.add_argument("--reason",
+                    help="Reason for revocation: %s" % ", ".join(CRL_REASON.keys()))
+    g4.add_argument("--invalidity-date", metavar="DATE",
+                    help="Consider certificate invalid from date")
+    g4.add_argument("--crl-scope", metavar="SCOPE",
+                    help="Score for types of certificates in CRL, one of: all, user, ca, attr.  Default: all")
+    g4.add_argument("--crl-reasons", metavar="REASONS",
+                    help="Limit CRL scope to only list of reasons")
+    g4.add_argument("--freshest-urls", metavar="URLS",
+                    help="Freshest CRL URLs")
+    g4.add_argument("--indirect-crl", action="store_true",
+                    help="Set Indirect-CRL flag")
 
     g5 = p.add_argument_group("Command 'show'",
                               "Show CSR or CRT file contents.  Takes .crt or .csr filenames as arguments.")
@@ -1999,4 +2037,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
