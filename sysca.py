@@ -44,7 +44,7 @@ __all__ = [
     "InvalidCertificate", "UnsupportedParameter",
     "load_key", "load_req", "load_cert", "load_crl",
     "key_to_pem", "cert_to_pem", "req_to_pem", "crl_to_pem",
-    "new_ec_key", "new_rsa_key", "new_dsa_key",
+    "new_ec_key", "new_rsa_key", "new_dsa_key", "new_key",
     "load_gpg_file", "load_password",
     "create_x509_req", "create_x509_cert", "create_x509_crl",
     "run_sysca"
@@ -448,6 +448,26 @@ def new_dsa_key(bits=2048):
     if not is_safe_bits(bits, SAFE_BITS_DSA):
         raise UnsupportedParameter("Bad value for DSA bits: %d" % bits)
     return dsa.generate_private_key(key_size=bits, backend=get_backend())
+
+
+def new_key(keydesc='ec'):
+    """Create new key.
+    """
+    short = {"ec": "ec:secp256r1", "rsa": "rsa:2048", "dsa": "dsa:2048"}
+    keydesc = short.get(keydesc, keydesc)
+
+    # create key
+    tmp = keydesc.lower().split(":")
+    if len(tmp) != 2:
+        raise UnsupportedParameter("Bad key spec: %s" % keydesc)
+    t, v = tmp
+    if t == "ec":
+        return new_ec_key(v)
+    elif t == "rsa":
+        return new_rsa_key(int(v))
+    elif t == "dsa":
+        return new_dsa_key(int(v))
+    raise UnsupportedParameter("Bad key type: %s" % keydesc)
 
 
 def valid_pubkey(pubkey):
@@ -1557,35 +1577,19 @@ def do_output(data, args, cmd):
 def newkey_command(args):
     """Create new key.
     """
-    # parse key-type argument
-    short = {"ec": "ec:secp256r1", "rsa": "rsa:2048", "dsa": "dsa:2048"}
     if len(args.files) > 1:
         die("Unexpected positional arguments")
     if args.files:
         keydesc = args.files[0]
     else:
         keydesc = "ec"
-    keydesc = short.get(keydesc, keydesc)
-
-    # create key
-    tmp = keydesc.lower().split(":")
-    if len(tmp) != 2:
-        die("Bad key spec: %s", keydesc)
-    t, v = tmp
-    if t == "ec":
-        k = new_ec_key(v)
-    elif t == "rsa":
-        k = new_rsa_key(int(v))
-    elif t == "dsa":
-        k = new_dsa_key(int(v))
-    else:
-        die("Bad key type: %s", t)
+    k = new_key(keydesc)
     msg("New key: %s", keydesc)
 
     # Output with optional encryption
     psw = load_password(args.password_file)
     pem = key_to_pem(k, psw)
-    do_output(pem, args, t)
+    do_output(pem, args, keydesc.split(':')[0])
 
 
 def info_from_args(args):
