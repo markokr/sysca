@@ -11,6 +11,8 @@ import os.path
 import re
 import subprocess
 import sys
+import pprint
+import binascii
 
 from datetime import datetime, timedelta
 
@@ -19,11 +21,13 @@ from cryptography.hazmat.primitives.asymmetric import ec, rsa, dsa
 from cryptography.hazmat.primitives.hashes import SHA256, SHA384, SHA512
 from cryptography.hazmat.primitives.serialization import (
     Encoding, PrivateFormat, PublicFormat,
-    BestAvailableEncryption, NoEncryption, load_pem_private_key)
+    BestAvailableEncryption, NoEncryption,
+    load_pem_private_key, load_der_private_key)
 
 from cryptography import x509
 from cryptography import __version__ as crypto_version
 from cryptography.x509.oid import (
+    ObjectIdentifier,
     NameOID, ExtendedKeyUsageOID, CRLEntryExtensionOID,
     ExtensionOID, AuthorityInformationAccessOID, SignatureAlgorithmOID)
 
@@ -158,6 +162,7 @@ XKU_CODE_TO_OID = {
     "email": ExtendedKeyUsageOID.EMAIL_PROTECTION,
     "time": ExtendedKeyUsageOID.TIME_STAMPING,
     "ocsp": ExtendedKeyUsageOID.OCSP_SIGNING,
+    "precert-ca": ObjectIdentifier("1.3.6.1.4.1.11129.2.4.3"),
 }
 
 # minimal KeyUsage defaults to add when ExtendedKeyUsage is given
@@ -169,6 +174,7 @@ XKU_DEFAULTS = {
     "email": ["digital_signature"],     # content_commitment, key_agreement, key_encipherment
     "time": ["digital_signature"],      # content_commitment
     "ocsp": ["digital_signature"],      # content_commitment
+    "precert-ca": ["key_cert_sign"],
 
     "encipher_only": ["key_agreement"],
     "decipher_only": ["key_agreement"],
@@ -276,6 +282,21 @@ def show_list(desc, lst, writeln):
         return
     val = ", ".join([list_escape(v) for v in lst])
     writeln("%s: %s" % (desc, val))
+
+
+def show_pprint(desc, val, writeln):
+    """Pretty-print compex dict/list.
+    """
+    if not val:
+        return
+    tab = '\n  '
+    txt = pprint.pformat(val, indent=2)
+    txt = tab + txt.replace('\n', tab)
+    writeln("%s:%s" % (desc, txt))
+
+
+def to_hex(data):
+    return binascii.b2a_hex(data).decode('ascii')
 
 
 def _unescape_char(m):
@@ -702,6 +723,7 @@ class CertInfo:
                  usage=None, ocsp_urls=None, crl_urls=None, issuer_urls=None,
                  ocsp_nocheck=False, ocsp_must_staple=False, ocsp_must_staple_v2=False,
                  permit_subtrees=None, exclude_subtrees=None, inhibit_any=None,
+                 require_explicit_policy=None, inhibit_policy_mapping=None,
                  load=None):
         """Initialize info object.
 
@@ -768,6 +790,17 @@ class CertInfo:
         self.version = None
         self.serial_number = None
         self.inhibit_any = inhibit_any
+        self.require_explicit_policy = require_explicit_policy
+        self.inhibit_policy_mapping = inhibit_policy_mapping
+        self.certificate_policies = None
+        self.precert_poison = False
+        self.precert_signed_timestamps = None
+        self.subject_key_identifier = None
+        self.authority_key_identifier = None
+        self.authority_cert_serial_number = None
+        self.authority_cert_issuer = None
+        self.not_valid_before = None
+        self.not_valid_after = None
 
         if self.path_length is not None and self.path_length < 0:
             self.path_length = None
@@ -788,10 +821,14 @@ class CertInfo:
             else:
                 raise InvalidCertificate("Unsupported certificate version")
             self.issuer_name = extract_name(obj.issuer)
+            self.not_valid_before = obj.not_valid_before
+            self.not_valid_after = obj.not_valid_after
         elif isinstance(obj, x509.CertificateSigningRequest):
             self.serial_number = None
             self.version = None
             self.issuer_name = None
+            self.not_valid_before = None
+            self.not_valid_after = None
         else:
             raise InvalidCertificate("Invalid obj type: %s" % type(obj))
         self.public_key_info = get_key_name(obj.public_key())
@@ -848,9 +885,11 @@ class CertInfo:
                 self.permit_subtrees = extract_gnames(extobj.permitted_subtrees)
                 self.exclude_subtrees = extract_gnames(extobj.excluded_subtrees)
             elif ext.oid == ExtensionOID.SUBJECT_KEY_IDENTIFIER:
-                pass
+                self.subject_key_identifier = to_hex(extobj.digest)
             elif ext.oid == ExtensionOID.AUTHORITY_KEY_IDENTIFIER:
-                pass
+                self.authority_key_identifier = to_hex(extobj.key_identifier)
+                self.authority_cert_serial_number = extobj.authority_cert_serial_number
+                self.authority_cert_issuer = extract_gnames(self.authority_cert_issuer)
             elif ext.oid == ExtensionOID.OCSP_NO_CHECK:
                 self.ocsp_nocheck = True
             elif ext.oid == ExtensionOID.TLS_FEATURE:
@@ -863,8 +902,49 @@ class CertInfo:
                         raise InvalidCertificate("Unsupported TLSFeature: %r" % (tls_feature_code,))
             elif ext.oid == ExtensionOID.INHIBIT_ANY_POLICY:
                 self.inhibit_any = extobj.skip_certs
+            elif ext.oid == ExtensionOID.POLICY_CONSTRAINTS:
+                self.require_explicit_policy = extobj.require_explicit_policy
+                self.inhibit_policy_mapping = extobj.inhibit_policy_mapping
+            elif ext.oid == ExtensionOID.CERTIFICATE_POLICIES:
+                if self.certificate_policies is None:
+                    self.certificate_policies = []
+                for pol in extobj:
+                    rpol = {
+                        'policy_identifier': pol.policy_identifier.dotted_string,
+                    }
+                    self.certificate_policies.append(rpol)
+                    if not pol.policy_qualifiers:
+                        continue
+                    rpol['policy_qualifiers'] = []
+                    for q in pol.policy_qualifiers:
+                        if isinstance(q, str):
+                            rpol['policy_qualifiers'].append(q)
+                            continue
+                        unot = {
+                            'notice_reference': None,
+                            'explicit_text': q.explicit_text,
+                        }
+                        if q.notice_reference is not None:
+                            unot['notice_reference'] = {
+                                'organization': q.notice_reference.organization,
+                                'notice_numbers': q.notice_reference.notice_numbers,
+                            }
+                        rpol['policy_qualifiers'].append(unot)
+            elif ext.oid == ExtensionOID.PRECERT_SIGNED_CERTIFICATE_TIMESTAMPS:
+                if self.precert_signed_timestamps is None:
+                    self.precert_signed_timestamps = []
+                for scts in extobj:
+                    stamp = {}
+                    self.precert_signed_timestamps.append(stamp)
+
+                    stamp['version'] = str(scts.version).split('.')[1]
+                    stamp['log_id'] = to_hex(scts.log_id)
+                    stamp['timestamp'] = scts.timestamp.isoformat(' ')
+                    stamp['entry_type'] = str(scts.entry_type).split('.')[1]
+            elif ext.oid == ExtensionOID.PRECERT_POISON:
+                self.precert_poison = True
             else:
-                raise InvalidCertificate("Unsupported extension in CSR: %s" % (ext,))
+                raise InvalidCertificate("Unsupported extension in CRT: %s" % (ext,))
 
     def extract_xkey_usage(self, ext):
         """Walk oid list, return keywords.
@@ -999,6 +1079,25 @@ class CertInfo:
             ext = x509.InhibitAnyPolicy(self.inhibit_any)
             builder = builder.add_extension(ext, critical=True)
 
+        # PolicyConstraints
+        if self.require_explicit_policy is not None or self.inhibit_policy_mapping is not None:
+            if not self.ca:
+                raise InvalidCertificate("PolicyConstraints applies only to CA certificates")
+            ext = x509.PolicyConstraints(self.require_explicit_policy, self.inhibit_policy_mapping)
+            builder = builder.add_extension(ext, critical=True)
+
+        # CertificatePolicies
+        if self.certificate_policies:
+            raise InvalidCertificate("Writing CertificatePolicies not supported")
+
+        # Precert Poison
+        if self.precert_poison:
+            raise InvalidCertificate("Writing PrecertPoison not supported")
+
+        # PrecertificateSignedCertificateTimestamps
+        if self.precert_signed_timestamps:
+            raise InvalidCertificate("Writing PrecertificateSignedCertificateTimestamps not supported")
+
         # configured builder
         return builder
 
@@ -1058,24 +1157,35 @@ class CertInfo:
         """
         if self.version is not None:
             writeln("Version: %s" % self.version)
-        if self.serial_number is not None:
-            writeln("Serial: %s" % serial_str(self.serial_number))
         if self.public_key_info:
             writeln("Public key: %s" % self.public_key_info)
+        if self.not_valid_before:
+            writeln("Not Valid Before: %s" % self.not_valid_before.isoformat(' '))
+        if self.not_valid_after:
+            writeln("Not Valid After: %s" % self.not_valid_after.isoformat(' '))
+        if self.serial_number is not None:
+            writeln("Serial: %s" % serial_str(self.serial_number))
         if self.subject:
             writeln("Subject: %s" % render_name(self.subject))
         show_list("SAN", self.san, writeln)
         show_list("Usage", self.usage, writeln)
-        show_list("OCSP URLs", self.ocsp_urls, writeln)
+        if self.subject_key_identifier:
+            writeln("Subject Key Identifier: %s" % self.subject_key_identifier)
+        if self.authority_key_identifier:
+            writeln("Authority Key Identifier: %s" % self.authority_key_identifier)
+        if self.authority_cert_serial_number:
+            writeln("Authority Cert Serial Number: %s" % serial_str(self.authority_cert_serial_number))
+        show_list("Authority Cert Issuer", self.authority_cert_issuer, writeln)
         if self.issuer_name:
             writeln("Issuer Name: %s" % render_name(self.issuer_name))
         show_list("Issuer SAN", self.issuer_san, writeln)
         show_list("Issuer URLs", self.issuer_urls, writeln)
+        show_list("OCSP URLs", self.ocsp_urls, writeln)
         show_list("CRL URLs", self.crl_urls, writeln)
         show_list("Permit", self.permit_subtrees, writeln)
         show_list("Exclude", self.exclude_subtrees, writeln)
         if self.ocsp_nocheck:
-            show_list("OCSP NoCheck", ["True"], writeln)
+            writeln("OCSP NoCheck: True")
 
         tls_features = []
         if self.ocsp_must_staple:
@@ -1085,6 +1195,14 @@ class CertInfo:
         show_list("TLS Features", tls_features, writeln)
         if self.inhibit_any is not None:
             writeln("Inhibit ANY policy: skip_certs=%r" % self.inhibit_any)
+        if self.require_explicit_policy is not None:
+            writeln("Policy Constraint - Require Explicit Policy: %d" % self.require_explicit_policy)
+        if self.inhibit_policy_mapping is not None:
+            writeln("Policy Constraint - Inhibit Policy Mapping: %d" % self.inhibit_policy_mapping)
+        show_pprint("Certificate Policies", self.certificate_policies, writeln)
+        show_pprint("Precert Signed Timestamps", self.precert_signed_timestamps, writeln)
+        if self.precert_poison:
+            writeln("Precert Poison: True")
 
 
 class RevCertInfo:
@@ -1626,6 +1744,8 @@ def info_from_args(args):
         exclude_subtrees=parse_list(args.exclude_subtrees),
         ca=args.CA,
         inhibit_any=args.inhibit_any,
+        require_explicit_policy=args.require_explicit_policy,
+        inhibit_policy_mapping=args.inhibit_policy_mapping,
         path_length=args.path_length)
 
 
@@ -1850,13 +1970,13 @@ def show_command_sysca(args):
         ext = os.path.splitext(fn)[1].lower()
         if ext == ".csr":
             req = CertInfo(load=load_req(fn))
-            req.show(msg_show)
+            req.show(msg)
         elif ext == ".crt":
             crt = CertInfo(load=load_cert(fn))
-            crt.show(msg_show)
+            crt.show(msg)
         elif ext == ".crl":
             crl = CRLInfo(load=load_crl(fn))
-            crl.show(msg_show)
+            crl.show(msg)
         else:
             die("Unsupported file: %s", fn)
 
@@ -1965,6 +2085,10 @@ def setup_args():
                     help="Disallowed NameConstraints.")
     g2.add_argument("--inhibit-any", metavar="N", type=int,
                     help="Number of levels after which 'any' policy is ignored.")
+    g2.add_argument("--require-explicit-policy", metavar="N", type=int,
+                    help="Number of levels after which certificate policy is required.")
+    g2.add_argument("--inhibit-policy-mapping", metavar="N", type=int,
+                    help="Number of levels after which policy mapping is disallowed.")
 
     g3 = p.add_argument_group("Command 'sign'",
                               "Create certificate for key in certificate request.  "

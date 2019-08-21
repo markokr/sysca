@@ -280,6 +280,22 @@ Options useful only when apps support them:
 
     Extension: NameConstraints_.
 
+**--inhibit-any N**
+    Disallow special handling of ``any`` policy (2.5.29.32.0)
+    after N levels.
+
+    Extension: InhibitAny_.
+
+**--require-explicit-policy N**
+    Require explicit certificate policy for whole path after N levels.
+
+    Extension: PolicyConstraints_.
+
+**--inhibit-policy-mapping N**
+    Disallow policy mapping processing after N levels.
+
+    Extension: PolicyConstraints_.
+
 sign
 ~~~~
 
@@ -506,4 +522,5 @@ actually used.
 .. _CRLIssuingDistributionPoint: https://tools.ietf.org/html/rfc5280#section-5.2.5
 .. _CRLReason: https://tools.ietf.org/html/rfc5280#section-5.3.1
 .. _CRLInvalidityDate: https://tools.ietf.org/html/rfc5280#section-5.3.2
-
+.. _InhibitAny: https://tools.ietf.org/html/rfc5280#section-4.2.1.14
+.. _PolicyConstraints: https://tools.ietf.org/html/rfc5280#section-4.2.1.11

@@ -22,6 +22,8 @@ sysca selfsign \
   --ocsp-must-staple \
   --ocsp-must-staple-v2 \
   --inhibit-any 5 \
+  --require-explicit-policy=3 \
+  --inhibit-policy-mapping=2 \
   --CA \
   --days 900 \
   --out tmp/${pfx}_ca.crt

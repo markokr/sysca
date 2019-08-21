@@ -102,6 +102,8 @@ def test_passthrough():
             'any',
         ],
         inhibit_any=6,
+        require_explicit_policy=2,
+        inhibit_policy_mapping=3,
         ocsp_must_staple=True,
         ocsp_must_staple_v2=True,
         ocsp_nocheck=True,
