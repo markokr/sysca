@@ -1492,6 +1492,11 @@ def load_gpg_file(fn):
     return out
 
 
+_bin_rc = re.compile(b'[\x00-\x08\x0b\x0c\x0e-\x1f]')
+
+def is_pem_data(data):
+    return not _bin_rc.search(data)
+
 def load_key(fn, psw=None):
     """Read private key, decrypt if needed.
     """
@@ -1500,7 +1505,10 @@ def load_key(fn, psw=None):
     if psw:
         psw = as_bytes(psw)
     data = load_gpg_file(fn)
-    key = load_pem_private_key(data, password=psw, backend=get_backend())
+    if is_pem_data(data):
+        key = load_pem_private_key(data, password=psw, backend=get_backend())
+    else:
+        key = load_der_private_key(data, password=psw, backend=get_backend())
     return key
 
 
@@ -1508,7 +1516,10 @@ def load_req(fn):
     """Read CSR file.
     """
     data = open(fn, "rb").read()
-    req = x509.load_pem_x509_csr(data, get_backend())
+    if is_pem_data(data):
+        req = x509.load_pem_x509_csr(data, get_backend())
+    else:
+        req = x509.load_der_x509_csr(data, get_backend())
     return req
 
 
@@ -1516,7 +1527,10 @@ def load_cert(fn):
     """Read CRT file.
     """
     data = open(fn, "rb").read()
-    crt = x509.load_pem_x509_certificate(data, get_backend())
+    if is_pem_data(data):
+        crt = x509.load_pem_x509_certificate(data, get_backend())
+    else:
+        crt = x509.load_der_x509_certificate(data, get_backend())
     return crt
 
 
@@ -1524,7 +1538,10 @@ def load_crl(fn):
     """Read CRL file.
     """
     data = open(fn, "rb").read()
-    crl = x509.load_pem_x509_crl(data, get_backend())
+    if is_pem_data(data):
+        crl = x509.load_pem_x509_crl(data, get_backend())
+    else:
+        crl = x509.load_der_x509_crl(data, get_backend())
     return crl
 
 
