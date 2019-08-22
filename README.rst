@@ -284,7 +284,7 @@ Options useful only when apps support them:
     Disallow special handling of ``any`` policy (2.5.29.32.0)
     after N levels.
 
-    Extension: InhibitAny_.
+    Extension: InhibitAnyPolicy_.
 
 **--require-explicit-policy N**
     Require explicit certificate policy for whole path after N levels.
@@ -295,6 +295,23 @@ Options useful only when apps support them:
     Disallow policy mapping processing after N levels.
 
     Extension: PolicyConstraints_.
+
+**--add-policy OID:SPECS**
+    Add another PolicyInformation record to certificate with optional qualifiers.
+
+    Usage:
+
+        ``--add-policy OID``
+            Just add OID alone.  Recommended usage.
+
+        ``--add-policy OID:SPEC,SPEC``
+            Add policy OID with one or more qualifiers.
+
+    Qualifier spec for URI pointer to CPS (Certification Practice Statement): ``|P=URI|``
+
+    Qualifier spec for UserNotice with explicitText and noticeRef: ``|T=explicit_text|O=orgName|N=1:2:3|``
+
+    Extension: CertificatePolicies_.
 
 sign
 ~~~~
@@ -493,6 +510,21 @@ Sign server key::
     $ sysca sign --days 365 --request Server.csr --ca-key TestCA.key.gpg --ca-info TestCA.crt > Server.crt
 
 
+Critical extensions
+-------------------
+
+SysCA does not allow tuning of critical_ extension flag,
+following extensions are always set as critical when added to certificate:
+
+* BasicConstraints_
+* KeyUsage_
+* ExtendedKeyUsage_
+* NameConstraints_
+* PolicyConstraints_
+* InhibitAnyPolicy_
+
+All other added extensions will be non-critical.
+
 Compatibility notes
 -------------------
 
@@ -522,5 +554,7 @@ actually used.
 .. _CRLIssuingDistributionPoint: https://tools.ietf.org/html/rfc5280#section-5.2.5
 .. _CRLReason: https://tools.ietf.org/html/rfc5280#section-5.3.1
 .. _CRLInvalidityDate: https://tools.ietf.org/html/rfc5280#section-5.3.2
-.. _InhibitAny: https://tools.ietf.org/html/rfc5280#section-4.2.1.14
+.. _InhibitAnyPolicy: https://tools.ietf.org/html/rfc5280#section-4.2.1.14
 .. _PolicyConstraints: https://tools.ietf.org/html/rfc5280#section-4.2.1.11
+.. _CertificatePolicies: https://tools.ietf.org/html/rfc5280#section-4.2.1.4
+.. _critical: https://tools.ietf.org/html/rfc5280#section-4.2

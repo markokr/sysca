@@ -264,9 +264,9 @@ def _escape_char(m):
     return "\\x%02x" % ord(c)
 
 
-def dn_escape(s):
+def dn_escape(s, sep="/"):
     """DistinguishedName backslash-escape"""
-    return re.sub(r"[\\/\x00-\x1F]", _escape_char, s)
+    return re.sub(r"[\\%c\x00-\x1F]" % sep, _escape_char, s)
 
 
 def list_escape(s):
@@ -280,8 +280,12 @@ def show_list(desc, lst, writeln):
     """
     if not lst:
         return
-    val = ", ".join([list_escape(v) for v in lst])
-    writeln("%s: %s" % (desc, val))
+    if len(lst) == 1:
+        writeln("%s: %s" % (desc, lst[0]))
+    else:
+        writeln("%s:" % desc)
+        for val in lst:
+            writeln("  %s" % (val,))
 
 
 def show_pprint(desc, val, writeln):
@@ -289,14 +293,14 @@ def show_pprint(desc, val, writeln):
     """
     if not val:
         return
-    tab = '\n  '
+    tab = "\n  "
     txt = pprint.pformat(val, indent=2)
-    txt = tab + txt.replace('\n', tab)
+    txt = tab + txt.replace("\n", tab)
     writeln("%s:%s" % (desc, txt))
 
 
 def to_hex(data):
-    return binascii.b2a_hex(data).decode('ascii')
+    return binascii.b2a_hex(data).decode("ascii")
 
 
 def _unescape_char(m):
@@ -316,15 +320,15 @@ def unescape(s):
     return re.sub(r"\\(x[0-9a-fA-F][0-9a-fA-F]|.)", _unescape_char, s)
 
 
-def render_name(name_att_list):
+def render_name(name_att_list, sep="/"):
     """Convert DistinguishedName dict to "/"-separated string.
     """
     res = [""]
     for k, v in name_att_list:
-        v = dn_escape(v)
+        v = dn_escape(v, sep)
         res.append("%s=%s" % (k, v))
     res.append("")
-    return "/".join(res)
+    return sep.join(res)
 
 
 def maybe_parse(val, parse_func):
@@ -371,11 +375,11 @@ def parse_list(slist):
     return res
 
 
-def parse_dn(dnstr):
+def parse_dn(dnstr, sep="/"):
     """Parse openssl-style /-separated list to dict.
     """
     res = []
-    for part in loop_escaped(dnstr, "/"):
+    for part in loop_escaped(dnstr, sep):
         part = part.strip()
         if not part:
             continue
@@ -471,7 +475,7 @@ def new_dsa_key(bits=2048):
     return dsa.generate_private_key(key_size=bits, backend=get_backend())
 
 
-def new_key(keydesc='ec'):
+def new_key(keydesc="ec"):
     """Create new key.
     """
     short = {"ec": "ec:secp256r1", "rsa": "rsa:2048", "dsa": "dsa:2048"}
@@ -589,6 +593,58 @@ def extract_gnames(ext_name_list):
         else:
             raise InvalidCertificate("Unsupported subjectAltName type: %s" % (gn,))
     return res
+
+
+def extract_policy(pol):
+    """Convert PolicyInformation into string format used by --add-policy
+    """
+    pol_oid = pol.policy_identifier.dotted_string
+    if not pol.policy_qualifiers:
+        return pol_oid
+    policy_qualifiers = []
+    for q in pol.policy_qualifiers:
+        qual = {}
+        if isinstance(q, str):
+            qual["P"] = q
+        else:
+            if q.notice_reference is not None:
+                if q.notice_reference.organization:
+                    qual["O"] = q.notice_reference.organization
+                if q.notice_reference.notice_numbers:
+                    qual["N"] = ":".join([str(n) for n in q.notice_reference.notice_numbers])
+            if q.explicit_text:
+                qual["T"] = q.explicit_text
+        policy_qualifiers.append(list_escape(render_name(qual.items(), "|")))
+    return "%s:%s" % (pol_oid, ",".join(policy_qualifiers))
+
+
+def make_policy(txt):
+    """Create PolicyInformation from --add-policy value
+    """
+    tmp = txt.split(":", 1)
+    pol_oid = ObjectIdentifier(tmp[0])
+    quals = None
+    if len(tmp) > 1:
+        quals = []
+        for elem in parse_list(tmp[1]):
+            d = dict(parse_dn(elem, "|"))
+            klist = list(d.keys())
+            if d.get("P"):
+                quals.append(d.get("P"))
+                if klist != ["P"]:
+                    raise InvalidCertificate("Bad policy spec: P must be alone")
+                continue
+            klist = [k for k in klist if k not in ("T", "N", "O")]
+            if klist:
+                raise InvalidCertificate("Bad policy spec: unknown fields: %r" % klist)
+            ref = None
+            nums = None
+            if d.get("N"):
+                nums = [int(n) for n in d.get("N").split(":")]
+            if d.get("O") or nums:
+                ref = x509.NoticeReference(d.get("O", ""), nums or [])
+            quals.append(x509.UserNotice(ref, d.get("T")))
+    return x509.PolicyInformation(pol_oid, quals)
 
 
 def load_name(name_att_list):
@@ -724,6 +780,7 @@ class CertInfo:
                  ocsp_nocheck=False, ocsp_must_staple=False, ocsp_must_staple_v2=False,
                  permit_subtrees=None, exclude_subtrees=None, inhibit_any=None,
                  require_explicit_policy=None, inhibit_policy_mapping=None,
+                 certificate_policies=None,
                  load=None):
         """Initialize info object.
 
@@ -768,6 +825,18 @@ class CertInfo:
             exclude_subtrees
                 list of GeneralNames for excluded subtrees
 
+            inhibit_any
+                number of levels
+
+            require_explicit_policy
+                number of levels
+
+            inhibit_policy_mapping
+                number of levels
+
+            certificate_policies
+                list of strings containing policy specs
+
             load
                 object to extract from (cert or cert request)
 
@@ -792,7 +861,7 @@ class CertInfo:
         self.inhibit_any = inhibit_any
         self.require_explicit_policy = require_explicit_policy
         self.inhibit_policy_mapping = inhibit_policy_mapping
-        self.certificate_policies = None
+        self.certificate_policies = certificate_policies
         self.precert_poison = False
         self.precert_signed_timestamps = None
         self.subject_key_identifier = None
@@ -906,41 +975,12 @@ class CertInfo:
                 self.require_explicit_policy = extobj.require_explicit_policy
                 self.inhibit_policy_mapping = extobj.inhibit_policy_mapping
             elif ext.oid == ExtensionOID.CERTIFICATE_POLICIES:
-                if self.certificate_policies is None:
-                    self.certificate_policies = []
-                for pol in extobj:
-                    rpol = {
-                        'policy_identifier': pol.policy_identifier.dotted_string,
-                    }
-                    self.certificate_policies.append(rpol)
-                    if not pol.policy_qualifiers:
-                        continue
-                    rpol['policy_qualifiers'] = []
-                    for q in pol.policy_qualifiers:
-                        if isinstance(q, str):
-                            rpol['policy_qualifiers'].append(q)
-                            continue
-                        unot = {
-                            'notice_reference': None,
-                            'explicit_text': q.explicit_text,
-                        }
-                        if q.notice_reference is not None:
-                            unot['notice_reference'] = {
-                                'organization': q.notice_reference.organization,
-                                'notice_numbers': q.notice_reference.notice_numbers,
-                            }
-                        rpol['policy_qualifiers'].append(unot)
+                self.certificate_policies = [extract_policy(pol) for pol in extobj]
             elif ext.oid == ExtensionOID.PRECERT_SIGNED_CERTIFICATE_TIMESTAMPS:
-                if self.precert_signed_timestamps is None:
-                    self.precert_signed_timestamps = []
-                for scts in extobj:
-                    stamp = {}
-                    self.precert_signed_timestamps.append(stamp)
-
-                    stamp['version'] = str(scts.version).split('.')[1]
-                    stamp['log_id'] = to_hex(scts.log_id)
-                    stamp['timestamp'] = scts.timestamp.isoformat(' ')
-                    stamp['entry_type'] = str(scts.entry_type).split('.')[1]
+                self.precert_signed_timestamps = ["%s_%s - %s - %s" % (
+                    str(scts.version).split(".")[1], to_hex(scts.log_id),
+                    scts.timestamp.isoformat(" "),
+                    str(scts.entry_type).split(".")[1]) for scts in extobj]
             elif ext.oid == ExtensionOID.PRECERT_POISON:
                 self.precert_poison = True
             else:
@@ -1088,7 +1128,9 @@ class CertInfo:
 
         # CertificatePolicies
         if self.certificate_policies:
-            raise InvalidCertificate("Writing CertificatePolicies not supported")
+            pols = [make_policy(p) for p in self.certificate_policies]
+            ext = x509.CertificatePolicies(pols)
+            builder = builder.add_extension(ext, critical=False)
 
         # Precert Poison
         if self.precert_poison:
@@ -1160,15 +1202,16 @@ class CertInfo:
         if self.public_key_info:
             writeln("Public key: %s" % self.public_key_info)
         if self.not_valid_before:
-            writeln("Not Valid Before: %s" % self.not_valid_before.isoformat(' '))
+            writeln("Not Valid Before: %s" % self.not_valid_before.isoformat(" "))
         if self.not_valid_after:
-            writeln("Not Valid After: %s" % self.not_valid_after.isoformat(' '))
+            writeln("Not Valid After: %s" % self.not_valid_after.isoformat(" "))
         if self.serial_number is not None:
             writeln("Serial: %s" % serial_str(self.serial_number))
         if self.subject:
             writeln("Subject: %s" % render_name(self.subject))
-        show_list("SAN", self.san, writeln)
-        show_list("Usage", self.usage, writeln)
+        show_list("Subject Alternative Name", self.san, writeln)
+        if self.usage:
+            writeln("Usage: %s" % ", ".join(self.usage))
         if self.subject_key_identifier:
             writeln("Subject Key Identifier: %s" % self.subject_key_identifier)
         if self.authority_key_identifier:
@@ -1199,8 +1242,8 @@ class CertInfo:
             writeln("Policy Constraint - Require Explicit Policy: %d" % self.require_explicit_policy)
         if self.inhibit_policy_mapping is not None:
             writeln("Policy Constraint - Inhibit Policy Mapping: %d" % self.inhibit_policy_mapping)
-        show_pprint("Certificate Policies", self.certificate_policies, writeln)
-        show_pprint("Precert Signed Timestamps", self.precert_signed_timestamps, writeln)
+        show_list("Certificate Policies", self.certificate_policies, writeln)
+        show_list("Precert Signed Timestamps", self.precert_signed_timestamps, writeln)
         if self.precert_poison:
             writeln("Precert Poison: True")
 
@@ -1610,7 +1653,7 @@ def load_gpg_file(fn):
     return out
 
 
-_bin_rc = re.compile(b'[\x00-\x08\x0b\x0c\x0e-\x1f]')
+_bin_rc = re.compile(b"[\x00-\x08\x0b\x0c\x0e-\x1f]")
 
 def is_pem_data(data):
     return not _bin_rc.search(data)
@@ -1724,7 +1767,7 @@ def newkey_command(args):
     # Output with optional encryption
     psw = load_password(args.password_file)
     pem = key_to_pem(k, psw)
-    do_output(pem, args, keydesc.split(':')[0])
+    do_output(pem, args, keydesc.split(":")[0])
 
 
 def info_from_args(args):
@@ -1743,6 +1786,7 @@ def info_from_args(args):
         permit_subtrees=parse_list(args.permit_subtrees),
         exclude_subtrees=parse_list(args.exclude_subtrees),
         ca=args.CA,
+        certificate_policies=args.add_policy,
         inhibit_any=args.inhibit_any,
         require_explicit_policy=args.require_explicit_policy,
         inhibit_policy_mapping=args.inhibit_policy_mapping,
@@ -2089,6 +2133,8 @@ def setup_args():
                     help="Number of levels after which certificate policy is required.")
     g2.add_argument("--inhibit-policy-mapping", metavar="N", type=int,
                     help="Number of levels after which policy mapping is disallowed.")
+    g2.add_argument("--add-policy", metavar="POLICY", type=str, action="append",
+                    help="Add policy.  Value is OID:/T=qualifier1/,/T=qualifier2/")
 
     g3 = p.add_argument_group("Command 'sign'",
                               "Create certificate for key in certificate request.  "
@@ -2174,10 +2220,7 @@ def run_sysca(argv):
 def main():
     """Command-line application entry point.
     """
-    try:
-        return run_sysca(sys.argv[1:])
-    except ValueError as ex:
-        die(str(ex))
+    return run_sysca(sys.argv[1:])
 
 
 if __name__ == "__main__":

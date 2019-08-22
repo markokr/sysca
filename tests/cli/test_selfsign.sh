@@ -24,6 +24,9 @@ sysca selfsign \
   --inhibit-any 5 \
   --require-explicit-policy=3 \
   --inhibit-policy-mapping=2 \
+  --add-policy '1.2.3.4:P=localhost,P=internal' \
+  --add-policy '2.3.4.5:O=org|N=1:2:3|T=words,T=more,O=only,N=1' \
+  --add-policy '2.5.29.32.0' \
   --CA \
   --days 900 \
   --out tmp/${pfx}_ca.crt

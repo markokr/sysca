@@ -111,6 +111,13 @@ def test_passthrough():
         issuer_urls=['http://localhost'],
         permit_subtrees=['dns:*.www.com'],
         exclude_subtrees=['dns:*.www.net'],
+        certificate_policies=[
+            '1.1.1',
+            '1.1.2:|P=link|',
+            '1.1.3:|P=link2|,|P=link3|',
+            '1.1.4:|O=org|,|N=1|,|T=txt|',
+            '1.1.5:|O=org|N=2:3|T=txt2|',
+        ],
     )
     req = sysca.create_x509_req(key, info)
     info2 = sysca.CertInfo(load=req)

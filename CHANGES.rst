@@ -1,12 +1,12 @@
 Version history
 ===============
 
-dev
+1.4
 ---
 
 * [feature] Disallow non-standard key formats unless ``--unsafe``
   switch is given.
-* [feature] Read-write support for PolicyConstraints.
+* [feature] Read-write support for PolicyConstraints and CertificatePolicies.
 * [feature] Read-only support for Certificate Transparency extensions,
   to allow ``show`` to work.
 
