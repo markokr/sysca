@@ -96,6 +96,9 @@ Options:
     Target file to write key to.  It's preferable to write to
     stdout and encrypt with GPG.
 
+**--outform PEM|DER**
+    Output file format.  PEM is textual format, DER is binary.  Default: PEM.
+
 request
 ~~~~~~~
 
@@ -105,6 +108,9 @@ Options:
 
 **--out CSR_FILE**
     Target file to write Certificate Signing Request to.
+
+**--outform PEM|DER**
+    Output file format.  PEM is textual format, DER is binary.  Default: PEM.
 
 **--key KEY_FILE**
     Private key file to create request for.  Can be PGP-encrypted.
@@ -330,6 +336,9 @@ Options:
 **--out CRT_FILE**
     Target file to write certificate to.
 
+**--outform PEM|DER**
+    Output file format.  PEM is textual format, DER is binary.  Default: PEM.
+
 **--days NUM**
     Lifetime for certificate in days.
 
@@ -386,6 +395,9 @@ Options for CRL itself:
 
 **--out FN**
     Write output to file.
+
+**--outform PEM|DER**
+    Output file format.  PEM is textual format, DER is binary.  Default: PEM.
 
 **--days NUM**
     Set period that this CRL is valid.

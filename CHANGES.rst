@@ -1,6 +1,11 @@
 Version history
 ===============
 
+dev
+---
+
+* [feature] Support DER output format.
+
 1.4
 ---
 

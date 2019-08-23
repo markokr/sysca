@@ -49,7 +49,7 @@ __all__ = [
     "load_key", "load_req", "load_cert", "load_crl",
     "key_to_pem", "cert_to_pem", "req_to_pem", "crl_to_pem",
     "new_ec_key", "new_rsa_key", "new_dsa_key", "new_key",
-    "load_gpg_file", "load_password",
+    "load_gpg_file", "load_password", "serialize",
     "create_x509_req", "create_x509_cert", "create_x509_crl",
     "run_sysca"
 ]
@@ -91,6 +91,25 @@ try:
                       for n in dir(EllipticCurveOID) if n[0] != "_"})
 except ImportError:
     pass
+
+
+# collect classes for isinstance() checks
+PUBKEY_CLASSES = [ec.EllipticCurvePublicKey, rsa.RSAPublicKey, dsa.DSAPublicKey]
+PRIVKEY_CLASSES = [ec.EllipticCurvePrivateKey, rsa.RSAPrivateKey, dsa.DSAPrivateKey]
+EDDSA_PUBKEY_CLASSES = []
+EDDSA_PRIVKEY_CLASSES = []
+if ed25519 is not None:
+    EDDSA_PUBKEY_CLASSES.append(ed25519.Ed25519PublicKey)
+    EDDSA_PRIVKEY_CLASSES.append(ed25519.Ed25519PrivateKey)
+if ed448 is not None:
+    EDDSA_PUBKEY_CLASSES.append(ed448.Ed448PublicKey)
+    EDDSA_PRIVKEY_CLASSES.append(ed448.Ed448PrivateKey)
+# isinstance() needs tuples
+PUBKEY_CLASSES = tuple(PUBKEY_CLASSES + EDDSA_PUBKEY_CLASSES)
+PRIVKEY_CLASSES = tuple(PRIVKEY_CLASSES + EDDSA_PRIVKEY_CLASSES)
+EDDSA_PUBKEY_CLASSES = tuple(EDDSA_PUBKEY_CLASSES)
+EDDSA_PRIVKEY_CLASSES = tuple(EDDSA_PRIVKEY_CLASSES)
+X509_CLASSES = (x509.Certificate, x509.CertificateSigningRequest, x509.CertificateRevocationList)
 
 
 def get_curve_for_name(name):
@@ -408,9 +427,7 @@ def get_backend():
 def get_hash_algo(privkey, ctx):
     """Return signature hash algo based on privkey.
     """
-    if ed25519 is not None and isinstance(privkey, ed25519.Ed25519PrivateKey):
-        return None
-    if ed448 is not None and isinstance(privkey, ed448.Ed448PrivateKey):
+    if isinstance(privkey, EDDSA_PRIVKEY_CLASSES):
         return None
     if isinstance(privkey, ec.EllipticCurvePrivateKey):
         if privkey.key_size > 500:
@@ -504,11 +521,7 @@ def valid_pubkey(pubkey):
         return is_safe_bits(pubkey.key_size, SAFE_BITS_DSA)
     if isinstance(pubkey, ec.EllipticCurvePublicKey):
         return is_safe_curve(pubkey.curve.name)
-    if ed25519 is not None and isinstance(pubkey, ed25519.Ed25519PublicKey):
-        return True
-    if ed448 is not None and isinstance(pubkey, ed448.Ed448PublicKey):
-        return True
-    return False
+    return isinstance(pubkey, PUBKEY_CLASSES)
 
 
 def valid_privkey(privkey):
@@ -520,11 +533,7 @@ def valid_privkey(privkey):
         return is_safe_bits(privkey.key_size, SAFE_BITS_DSA)
     if isinstance(privkey, ec.EllipticCurvePrivateKey):
         return is_safe_curve(privkey.curve.name)
-    if ed25519 is not None and isinstance(privkey, ed25519.Ed25519PrivateKey):
-        return True
-    if ed448 is not None and isinstance(privkey, ed448.Ed448PrivateKey):
-        return True
-    return False
+    return isinstance(privkey, PRIVKEY_CLASSES)
 
 
 def get_key_name(key):
@@ -748,6 +757,47 @@ def crl_to_pem(crl):
     """Serialize certificate revocation list in PEM format.
     """
     return crl.public_bytes(Encoding.PEM)
+
+
+def serialize(obj, encoding='pem', password=None):
+    """Returns standard serialization for object.
+
+    Supports: public and private keys, certificate, certificate request, CRL.
+    Encoding:
+        pem - textual format
+        der - binary format
+        raw - for eddsa private keys
+
+    Returns string value for textual formats, bytes otherwise.
+    """
+    ENCMAP = {'pem': Encoding.PEM, 'der': Encoding.DER}
+    if hasattr(Encoding, 'Raw'):
+        ENCMAP['raw'] = getattr(Encoding, 'Raw')
+    if encoding not in ENCMAP:
+        raise ValueError("Unsupported output format: %s" % encoding)
+
+    enc = ENCMAP[encoding]
+    res = None
+    if isinstance(obj, PRIVKEY_CLASSES):
+        fmt = PrivateFormat.PKCS8
+        hide = NoEncryption()
+        if encoding == 'raw':
+            if password:
+                raise ValueError("Raw format does not support password")
+            fmt = getattr(PrivateFormat, 'Raw')
+        elif password:
+            hide = BestAvailableEncryption(as_bytes(password))
+        res = obj.private_bytes(enc, fmt, hide)
+    elif password is not None:
+        raise ValueError("Only private keys can have password protection")
+    elif isinstance(obj, X509_CLASSES + PUBKEY_CLASSES):
+        res = obj.public_bytes(enc)
+    else:
+        raise TypeError("Unsupported type for serialize()")
+
+    if enc in (Encoding.PEM,):
+        return res.decode('utf8')
+    return res
 
 
 def convert_urls_to_gnames(url_list):
@@ -1735,21 +1785,29 @@ def msg(txt, *args):
     sys.stderr.write(txt + "\n")
 
 
-def do_output(data, args, cmd):
+def do_output(obj, args, cmd, password=None):
     """Output X509 structure
     """
+    data = serialize(obj, args.outform.lower(), password=password)
     if args.text:
+        if args.outform.lower() != 'pem':
+            die("Need --outform=pem for --text to work")
         cmd = ["openssl", cmd, "-text"]
         if args.out:
             cmd.extend(["-out", args.out])
         p = subprocess.Popen(cmd, stdin=subprocess.PIPE)
-        p.communicate(data)
+        p.communicate(as_bytes(data))
     elif args.out:
         with open(args.out, "wb") as f:
             f.write(as_bytes(data))
-    else:
-        sys.stdout.write(as_unicode(data))
+    elif isinstance(data, str):
+        sys.stdout.write(data)
         sys.stdout.flush()
+    elif sys.stdout.isatty():
+        die("Will not write binary output to console")
+    else:
+        with os.fdopen(sys.stdout.fileno(), "wb") as f:
+            f.write(data)
 
 
 def newkey_command(args):
@@ -1766,8 +1824,7 @@ def newkey_command(args):
 
     # Output with optional encryption
     psw = load_password(args.password_file)
-    pem = key_to_pem(k, psw)
-    do_output(pem, args, keydesc.split(":")[0])
+    do_output(k, args, 'pkey', password=psw)
 
 
 def info_from_args(args):
@@ -1875,7 +1932,7 @@ def req_command(args):
     # Load private key, create signing request
     key = load_key(args.key, load_password(args.password_file))
     req = create_x509_req(key, subject_info)
-    do_output(req_to_pem(req), args, "req")
+    do_output(req, args, "req")
 
 
 def sign_command(args):
@@ -1911,7 +1968,7 @@ def sign_command(args):
                    args.path_length, args.request, reset_info=reset_info)
 
     # Write certificate
-    do_output(cert_to_pem(cert), args, "x509")
+    do_output(cert, args, "x509")
 
 
 def selfsign_command(args):
@@ -1934,7 +1991,7 @@ def selfsign_command(args):
 
     # sign created request
     cert = do_sign(subject_csr, subject_csr, key, args.days, args.path_length, "<selfsign>")
-    do_output(cert_to_pem(cert), args, "x509")
+    do_output(cert, args, "x509")
 
 
 def update_crl_command(args):
@@ -2004,7 +2061,7 @@ def update_crl_command(args):
         crl_info.revoked_list.append(rcert)
 
     res = create_x509_crl(issuer_key, issuer_info, crl_info, args.days)
-    do_output(crl_to_pem(res), args, "crl")
+    do_output(res, args, "crl")
 
 
 def show_command_sysca(args):
@@ -2083,6 +2140,8 @@ def setup_args():
                    help="Add human-readable text about output")
     p.add_argument("--out", metavar="FN",
                    help="File to write output to, instead stdout")
+    p.add_argument("--outform", default='PEM',
+                   help="Select output format: PEM|DER.  Default: PEM")
     p.add_argument("--quiet", "-q", action="store_true",
                    help="Be quiet")
     p.add_argument("--unsafe", action="store_true",
