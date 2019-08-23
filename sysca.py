@@ -22,6 +22,7 @@ from cryptography.hazmat.primitives.hashes import SHA256, SHA384, SHA512
 from cryptography.hazmat.primitives.serialization import (
     Encoding, PrivateFormat, PublicFormat,
     BestAvailableEncryption, NoEncryption,
+    load_pem_public_key, load_der_public_key,
     load_pem_private_key, load_der_private_key)
 
 from cryptography import x509
@@ -762,15 +763,19 @@ def crl_to_pem(crl):
 def serialize(obj, encoding='pem', password=None):
     """Returns standard serialization for object.
 
-    Supports: public and private keys, certificate, certificate request, CRL.
-    Encoding:
+    Supports: certificate, certificate request, CRL, public and private keys.
+
+    Standard formats for all types:
         pem - textual format
         der - binary format
-        raw - for eddsa private keys
+
+    Experimental formats for public and private keys:
+        ssh - compatible with openssh
+        raw - eddsa keys
 
     Returns string value for textual formats, bytes otherwise.
     """
-    ENCMAP = {'pem': Encoding.PEM, 'der': Encoding.DER}
+    ENCMAP = {'pem': Encoding.PEM, 'der': Encoding.DER, 'ssh': Encoding.OpenSSH}
     if hasattr(Encoding, 'Raw'):
         ENCMAP['raw'] = getattr(Encoding, 'Raw')
     if encoding not in ENCMAP:
@@ -787,16 +792,28 @@ def serialize(obj, encoding='pem', password=None):
             fmt = getattr(PrivateFormat, 'Raw')
         elif password:
             hide = BestAvailableEncryption(as_bytes(password))
+        if encoding == 'ssh':
+            fmt = PrivateFormat.TraditionalOpenSSL
         res = obj.private_bytes(enc, fmt, hide)
     elif password is not None:
         raise ValueError("Only private keys can have password protection")
-    elif isinstance(obj, X509_CLASSES + PUBKEY_CLASSES):
+    elif isinstance(obj, PUBKEY_CLASSES):
+        fmt = PublicFormat.SubjectPublicKeyInfo
+        if encoding == 'ssh':
+            fmt = PublicFormat.OpenSSH
+        elif encoding == 'raw':
+            fmt = getattr(PublicFormat, 'Raw')
+        res = obj.public_bytes(enc, fmt)
+    elif isinstance(obj, X509_CLASSES):
         res = obj.public_bytes(enc)
     else:
         raise TypeError("Unsupported type for serialize()")
 
-    if enc in (Encoding.PEM,):
-        return res.decode('utf8')
+    if enc in (Encoding.PEM, Encoding.OpenSSH):
+        txt = res.decode('utf8')
+        if txt[-1] != '\n':
+            return txt + '\n'
+        return txt
     return res
 
 
@@ -891,40 +908,58 @@ class CertInfo:
                 object to extract from (cert or cert request)
 
         """
+        # set after signing
+        self.version = None
+        self.issuer_name = None
+        self.serial_number = None
+        self.not_valid_before = None
+        self.not_valid_after = None
+        self.public_key_pem = None
+        self.public_key_info = None
+        # Subject
+        self.subject = maybe_parse(subject, parse_dn)
+        # BasicConstraints
         self.ca = ca
         self.path_length = path_length
-        self.subject = maybe_parse(subject, parse_dn)
+        if self.path_length is not None and self.path_length < 0:
+            self.path_length = None
+        # SubjectAltNames
         self.san = maybe_parse(alt_names, parse_list)
-        self.issuer_name = None
+        # IssuerAlternativeName
         self.issuer_san = None
+        # KeyUsage + ExtendedKeyUsage
         self.usage = maybe_parse(usage, parse_list)
+        # AuthorityInformationAccess
         self.ocsp_urls = maybe_parse(ocsp_urls, parse_list)
-        self.crl_urls = maybe_parse(crl_urls, parse_list)
         self.issuer_urls = maybe_parse(issuer_urls, parse_list)
+        # CRLDistributionPoints
+        self.crl_urls = maybe_parse(crl_urls, parse_list)
+        # NameConstraints
         self.exclude_subtrees = maybe_parse(exclude_subtrees, parse_list)
         self.permit_subtrees = maybe_parse(permit_subtrees, parse_list)
+        # OCSPNoCheck
         self.ocsp_nocheck = ocsp_nocheck
+        # TLSFeature
         self.ocsp_must_staple = ocsp_must_staple
         self.ocsp_must_staple_v2 = ocsp_must_staple_v2
-        self.version = None
-        self.serial_number = None
+        # InhibitAnyPolicy
         self.inhibit_any = inhibit_any
+        # PolicyConstraints
         self.require_explicit_policy = require_explicit_policy
         self.inhibit_policy_mapping = inhibit_policy_mapping
+        # CertificatePolicies
         self.certificate_policies = certificate_policies
-        self.precert_poison = False
-        self.precert_signed_timestamps = None
+        # SubjectKeyIdentifier
         self.subject_key_identifier = None
+        # AuthorityKeyIdentifier
         self.authority_key_identifier = None
         self.authority_cert_serial_number = None
         self.authority_cert_issuer = None
-        self.not_valid_before = None
-        self.not_valid_after = None
+        # PrecertPoison
+        self.precert_poison = False
+        # PrecertificateSignedCertificateTimestamps
+        self.precert_signed_timestamps = None
 
-        if self.path_length is not None and self.path_length < 0:
-            self.path_length = None
-
-        self.public_key_info = None
         if load is not None:
             self.load_from_existing(load)
 
@@ -942,12 +977,14 @@ class CertInfo:
             self.issuer_name = extract_name(obj.issuer)
             self.not_valid_before = obj.not_valid_before
             self.not_valid_after = obj.not_valid_after
+            self.public_key_pem = serialize(obj.public_key())
         elif isinstance(obj, x509.CertificateSigningRequest):
             self.serial_number = None
             self.version = None
             self.issuer_name = None
             self.not_valid_before = None
             self.not_valid_after = None
+            self.public_key_pem = serialize(obj.public_key())
         else:
             raise InvalidCertificate("Invalid obj type: %s" % type(obj))
         self.public_key_info = get_key_name(obj.public_key())
@@ -1028,9 +1065,9 @@ class CertInfo:
                 self.certificate_policies = [extract_policy(pol) for pol in extobj]
             elif ext.oid == ExtensionOID.PRECERT_SIGNED_CERTIFICATE_TIMESTAMPS:
                 self.precert_signed_timestamps = ["%s_%s - %s - %s" % (
-                    str(scts.version).split(".")[1], to_hex(scts.log_id),
-                    scts.timestamp.isoformat(" "),
-                    str(scts.entry_type).split(".")[1]) for scts in extobj]
+                        str(scts.version).split(".")[1], str(scts.entry_type).split(".")[1],
+                        scts.timestamp.isoformat(" "), to_hex(scts.log_id)
+                    ) for scts in extobj]
             elif ext.oid == ExtensionOID.PRECERT_POISON:
                 self.precert_poison = True
             else:
@@ -1403,12 +1440,18 @@ class CRLInfo:
         """
         self.revoked_list = revoked_list or []
         self.issuer_name = None
-        self.issuer_san = None
         self.auth_key_id = None
         self.next_update = next_update
         self.last_update = last_update
+
+        # CRLNumber
         self.crl_number = crl_number
+
+        # DeltaCRLIndicator
         self.delta_crl_number = delta_crl_number
+
+        # IssuerAlternativeName
+        self.issuer_san = None
 
         # IssuingDistributionPoint
         self.crl_scope = crl_scope      # all,user,ca,attr
@@ -1416,6 +1459,11 @@ class CRLInfo:
         self.only_some_reasons = only_some_reasons or set()
         self.full_methods = full_methods
         self.relative_methods = relative_methods
+
+        # AuthorityKeyIdentifier
+        self.authority_key_identifier = None
+        self.authority_cert_issuer = None
+        self.authority_cert_serial_number = None
 
         # AuthorityInformationAccess
         self.issuer_urls = maybe_parse(issuer_urls, parse_list)
@@ -1600,9 +1648,19 @@ class CRLInfo:
     def show(self, writeln):
         """Print out details.
         """
+        self.authority_key_identifier = None
+        self.authority_cert_issuer = None
+        self.authority_cert_serial_number = None
+
         if self.issuer_name:
             writeln("Issuer Name: %s" % render_name(self.issuer_name))
         show_list("Issuer SAN", self.issuer_san, writeln)
+        if self.authority_key_identifier:
+            writeln("Authority Key Identifier: %s" % self.authority_key_identifier)
+        if self.authority_cert_serial_number:
+            writeln("Authority Certificate Serial: %s" % serial_str(self.authority_cert_serial_number))
+        if self.authority_cert_issuer:
+            writeln("Authority Certificate Issuer: %s" % render_name(self.authority_cert_issuer))
         writeln("CRL Scope: %s" % self.crl_scope)
         if self.crl_number is not None:
             writeln("CRL Number: %s" % serial_str(self.crl_number))
@@ -1708,6 +1766,50 @@ _bin_rc = re.compile(b"[\x00-\x08\x0b\x0c\x0e-\x1f]")
 def is_pem_data(data):
     return not _bin_rc.search(data)
 
+
+def autodetect(data):
+    """Relaxed autodetect, for 'show'.
+    """
+    # -- X.509 formats --
+    # CERTIFICATE
+    # CERTIFICATE REQUEST
+    # X509 CRL
+    # PUBLIC KEY
+    # PRIVATE KEY
+    # ENCRYPTED PRIVATE KEY
+    # -- other formats --
+    # OPENSSH PRIVATE KEY
+    # PGP PUBLIC KEY BLOCK
+    # PGP PRIVATE KEY BLOCK
+    # PGP MESSAGE
+    words = b'(?: [A-Z][A-Z0-9]*)+'
+    rc1 = re.compile(b'-----BEGIN(%s)-----' % words)
+    rc2 = re.compile(b'-----END(%s)-----' % words)
+    if not is_pem_data(data):
+        return None
+    m1 = rc1.search(data)
+    if not m1:
+        return None
+    m2 = rc2.search(data, m1.end())
+    if not m2:
+        return None
+    t1 = m1.group(1)
+    t2 = m2.group(1)
+    if t1 != t2:
+        return None
+    if t1.endswith(b' CERTIFICATE'):
+        return 'crt'
+    if t1.endswith(b' CRL'):
+        return 'crl'
+    if t1.endswith(b' REQUEST'):
+        return 'csr'
+    if t1.endswith(b' PRIVATE KEY'):
+        return 'key'
+    if t1.endswith(b' PUBLIC KEY'):
+        return 'pub'
+    return None
+
+
 def load_key(fn, psw=None):
     """Read private key, decrypt if needed.
     """
@@ -1723,15 +1825,22 @@ def load_key(fn, psw=None):
     return key
 
 
+def load_pub_key(fn):
+    """Read public key file.
+    """
+    data = open(fn, "rb").read()
+    if is_pem_data(data):
+        return load_pem_public_key(data, get_backend())
+    return load_der_public_key(data, get_backend())
+
+
 def load_req(fn):
     """Read CSR file.
     """
     data = open(fn, "rb").read()
     if is_pem_data(data):
-        req = x509.load_pem_x509_csr(data, get_backend())
-    else:
-        req = x509.load_der_x509_csr(data, get_backend())
-    return req
+        return x509.load_pem_x509_csr(data, get_backend())
+    return x509.load_der_x509_csr(data, get_backend())
 
 
 def load_cert(fn):
@@ -1739,10 +1848,8 @@ def load_cert(fn):
     """
     data = open(fn, "rb").read()
     if is_pem_data(data):
-        crt = x509.load_pem_x509_certificate(data, get_backend())
-    else:
-        crt = x509.load_der_x509_certificate(data, get_backend())
-    return crt
+        return x509.load_pem_x509_certificate(data, get_backend())
+    return x509.load_der_x509_certificate(data, get_backend())
 
 
 def load_crl(fn):
@@ -1750,10 +1857,8 @@ def load_crl(fn):
     """
     data = open(fn, "rb").read()
     if is_pem_data(data):
-        crl = x509.load_pem_x509_crl(data, get_backend())
-    else:
-        crl = x509.load_der_x509_crl(data, get_backend())
-    return crl
+        return x509.load_pem_x509_crl(data, get_backend())
+    return x509.load_der_x509_crl(data, get_backend())
 
 
 def load_password(fn):
@@ -1761,9 +1866,7 @@ def load_password(fn):
     """
     if not fn:
         return None
-    data = load_gpg_file(fn)
-    data = data.strip(b"\n")
-    return data
+    return load_gpg_file(fn).strip(b"\n")
 
 
 def die(txt, *args):
@@ -1785,16 +1888,30 @@ def msg(txt, *args):
     sys.stderr.write(txt + "\n")
 
 
-def do_output(obj, args, cmd, password=None):
+def do_output(obj, args, password=None):
     """Output X509 structure
     """
     data = serialize(obj, args.outform.lower(), password=password)
     if args.text:
         if args.outform.lower() != 'pem':
             die("Need --outform=pem for --text to work")
+        extra_args = []
+        if isinstance(obj, x509.Certificate):
+            cmd = "x509"
+        elif isinstance(obj, x509.CertificateRevocationList):
+            cmd = "crl"
+        elif isinstance(obj, x509.CertificateSigningRequest):
+            cmd = "req"
+        elif isinstance(obj, PUBKEY_CLASSES):
+            cmd = "pkey"
+            extra_args = ['-pubin']
+        elif isinstance(obj, PRIVKEY_CLASSES):
+            cmd = "pkey"
         cmd = ["openssl", cmd, "-text"]
         if args.out:
             cmd.extend(["-out", args.out])
+        if extra_args:
+            cmd.extend(extra_args)
         p = subprocess.Popen(cmd, stdin=subprocess.PIPE)
         p.communicate(as_bytes(data))
     elif args.out:
@@ -1824,7 +1941,7 @@ def newkey_command(args):
 
     # Output with optional encryption
     psw = load_password(args.password_file)
-    do_output(k, args, 'pkey', password=psw)
+    do_output(k, args, password=psw)
 
 
 def info_from_args(args):
@@ -1932,7 +2049,7 @@ def req_command(args):
     # Load private key, create signing request
     key = load_key(args.key, load_password(args.password_file))
     req = create_x509_req(key, subject_info)
-    do_output(req, args, "req")
+    do_output(req, args)
 
 
 def sign_command(args):
@@ -1968,7 +2085,7 @@ def sign_command(args):
                    args.path_length, args.request, reset_info=reset_info)
 
     # Write certificate
-    do_output(cert, args, "x509")
+    do_output(cert, args)
 
 
 def selfsign_command(args):
@@ -1991,7 +2108,7 @@ def selfsign_command(args):
 
     # sign created request
     cert = do_sign(subject_csr, subject_csr, key, args.days, args.path_length, "<selfsign>")
-    do_output(cert, args, "x509")
+    do_output(cert, args)
 
 
 def update_crl_command(args):
@@ -2061,25 +2178,86 @@ def update_crl_command(args):
         crl_info.revoked_list.append(rcert)
 
     res = create_x509_crl(issuer_key, issuer_info, crl_info, args.days)
-    do_output(res, args, "crl")
+    do_output(res, args)
+
+
+def load_object_any(fn, password=None):
+    ext = os.path.splitext(fn)[1].lower()
+    if ext == ".csr":
+        return load_req(fn)
+    elif ext == ".crt":
+        return load_cert(fn)
+    elif ext == ".crl":
+        return load_crl(fn)
+
+    with open(fn, "rb") as f:
+        fmt = autodetect(f.read(2*1024*1024))
+    if not fmt:
+        die("Unsupported file: %s", fn)
+
+    if fmt == 'csr':
+        return load_req(fn)
+    elif fmt == "crt":
+        return load_cert(fn)
+    elif fmt == "crl":
+        return load_crl(fn)
+    elif fmt == "pub":
+        return load_pub_key(fn)
+    elif fmt == "key":
+        return load_key(fn, password)
+    return None
 
 
 def show_command_sysca(args):
     """Dump .crt and .csr files.
     """
+    def simple_write(ln):
+        sys.stdout.write(ln + '\n')
+    psw = load_password(args.password_file)
     for fn in args.files:
-        ext = os.path.splitext(fn)[1].lower()
-        if ext == ".csr":
-            req = CertInfo(load=load_req(fn))
-            req.show(msg)
-        elif ext == ".crt":
-            crt = CertInfo(load=load_cert(fn))
-            crt.show(msg)
-        elif ext == ".crl":
-            crl = CRLInfo(load=load_crl(fn))
-            crl.show(msg)
-        else:
+        obj = load_object_any(fn, password=psw)
+        if obj is None:
             die("Unsupported file: %s", fn)
+        if isinstance(obj, (x509.Certificate, x509.CertificateSigningRequest)):
+            CertInfo(load=obj).show(simple_write)
+        elif isinstance(obj, x509.CertificateRevocationList):
+            CRLInfo(load=obj).show(simple_write)
+        elif isinstance(obj, PUBKEY_CLASSES):
+            sys.stdout.write(serialize(obj))
+        elif isinstance(obj, PRIVKEY_CLASSES):
+            sys.stdout.write(serialize(obj, password=psw))
+        else:
+            die("bad format")
+
+
+def export_command(args):
+    """Rewrite data.
+    """
+    psw = load_password(args.password_file)
+    for fn in args.files:
+        obj = load_object_any(fn, password=psw)
+        if obj is None:
+            die("Unsupported file: %s", fn)
+        if isinstance(obj, PRIVKEY_CLASSES):
+            do_output(obj, args, psw)
+        else:
+            do_output(obj, args)
+
+
+def export_pubkey_command(args):
+    """Dump public key.
+    """
+    psw = load_password(args.password_file)
+    for fn in args.files:
+        obj = load_object_any(fn, password=psw)
+        if obj is None:
+            die("Unsupported file: %s", fn)
+        elif isinstance(obj, PUBKEY_CLASSES):
+            do_output(obj, args)
+        elif hasattr(obj, 'public_key'):
+            do_output(obj.public_key(), args)
+        else:
+            die("no public key")
 
 
 def show_command_openssl(args):
@@ -2239,7 +2417,7 @@ def setup_args():
                     help="Set Indirect-CRL flag")
 
     g5 = p.add_argument_group("Command 'show'",
-                              "Show CSR or CRT file contents.  Takes .crt or .csr filenames as arguments.")
+                              "Show CSR, CRT or CRL file contents.  Takes .crt, .csr or .crl filenames as arguments.")
     g5.add_argument("files", help=argparse.SUPPRESS, nargs="*")
 
     return p
@@ -2270,6 +2448,10 @@ def run_sysca(argv):
         update_crl_command(args)
     elif args.command == "show":
         show_command(args)
+    elif args.command == "export-pubkey":
+        export_pubkey_command(args)
+    elif args.command == "export":
+        export_command(args)
     elif args.command == "show-curves":
         print("%s" % "\n".join(get_ec_curves()))
     else:
@@ -2283,4 +2465,8 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except (BrokenPipeError, KeyboardInterrupt):
+        sys.exit(1)
+
