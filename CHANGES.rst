@@ -4,7 +4,11 @@ Version history
 dev
 ---
 
+* [feature] ``export`` command to change file format.  Useful for keys.
+* [feature] ``export-pubkey`` command to extract public key
+  from certificate or private key.
 * [feature] Support DER output format.
+* [cleanup] Split code into submodules.
 
 1.4
 ---

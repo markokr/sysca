@@ -3,7 +3,7 @@ from setuptools import setup
 
 # load version without importing
 import re
-src = open("sysca.py", "r").read()
+src = open("sysca/__init__.py", "r").read()
 version = re.search(r"""^__version__\s*=\s*['"]([^'"]+)['"]""", src, re.M).group(1)
 
 # load description
@@ -19,9 +19,9 @@ setup(
     license="ISC",
     author_email="markokr@gmail.com",
     url="https://github.com/markokr/sysca",
-    py_modules=["sysca"],
+    packages=["sysca"],
     entry_points={
-        "console_scripts": ["sysca=sysca:main"],
+        "console_scripts": ["sysca=sysca.tool:main"],
     },
     zip_safe=True,
     install_requires=["cryptography>=2.1"],

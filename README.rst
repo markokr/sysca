@@ -489,10 +489,42 @@ show
 
 Display contents of CSR or CRT file.
 
-show-curves
+list-curves
 ~~~~~~~~~~~
 
-List supported safe curves.  Needs ``--unsafe`` flag to show all supported curves.
+Show supported safe curves.  Needs ``--unsafe`` flag to show all supported curves.
+
+export
+~~~~~~
+
+Reads and outputs file again.  Useful for converting key formats.
+
+Options:
+
+**--out FN**
+    Write output to file.
+
+**--outform PEM|DER**
+    Output file format.  PEM is textual format, DER is binary.  Default: PEM.
+
+**--password-file FN**
+    Password file for CA private key.  Can be PGP-encrypted.
+
+export-pubkey
+~~~~~~~~~~~~~
+
+Reads certificate, certificate request or private key file and outputs it's public key.
+
+Options:
+
+**--out FN**
+    Write output to file.
+
+**--outform PEM|DER**
+    Output file format.  PEM is textual format, DER is binary.  Default: PEM.
+
+**--password-file FN**
+    Password file for CA private key.  Can be PGP-encrypted.
 
 Private Key Protection
 ----------------------

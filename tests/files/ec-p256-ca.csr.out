@@ -1,0 +1,4 @@
+Public key: ec:secp256r1
+Subject: /CN=ecreq/
+CA: True
+Usage: key_cert_sign, crl_sign

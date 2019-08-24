@@ -1,0 +1,37 @@
+Version: 3
+Public key: rsa:2048
+Not Valid Before: 2019-07-15 22:06:38
+Not Valid After: 2019-10-13 22:06:38
+Serial: 04:20:9a:74:31:13:b4:ad:1f:04:97:25:48:d2:f9:54:cf:f8
+Subject: /CN=www.letsencrypt.org/
+Subject Alternative Name:
+  dns:cert.int-x1.letsencrypt.org
+  dns:cert.int-x2.letsencrypt.org
+  dns:cert.int-x3.letsencrypt.org
+  dns:cert.int-x4.letsencrypt.org
+  dns:cert.root-x1.letsencrypt.org
+  dns:cert.staging-x1.letsencrypt.org
+  dns:cert.stg-int-x1.letsencrypt.org
+  dns:cert.stg-root-x1.letsencrypt.org
+  dns:cp.letsencrypt.org
+  dns:cp.root-x1.letsencrypt.org
+  dns:cps.letsencrypt.org
+  dns:cps.root-x1.letsencrypt.org
+  dns:crl.root-x1.letsencrypt.org
+  dns:letsencrypt.org
+  dns:origin.letsencrypt.org
+  dns:origin2.letsencrypt.org
+  dns:status.letsencrypt.org
+  dns:www.letsencrypt.org
+Usage: digital_signature, key_encipherment, server, client
+Subject Key Identifier: 74ad581f3fa559294a1625429c3801c8375d6807
+Authority Key Identifier: a84a6a63047dddbae6d139b7a64565eff3a8eca1
+Issuer Name: /C=US/O=Let's Encrypt/CN=Let's Encrypt Authority X3/
+Issuer URLs: http://cert.int-x3.letsencrypt.org/
+OCSP URLs: http://ocsp.int-x3.letsencrypt.org
+Certificate Policies:
+  2.23.140.1.2.1
+  1.3.6.1.4.1.44947.1.1.1:|P=http://cps.letsencrypt.org|
+Precert Signed Timestamps:
+  v1_PRE_CERTIFICATE - 2019-07-15 23:06:38.881000 - 747eda8331ad331091219cce254f4270c2bffd5e422008c6373579e6107bcc56
+  v1_PRE_CERTIFICATE - 2019-07-15 23:06:38.851000 - 293c519654c83965baaa50fc5807d4b76fbf587a2972dca4c30cf4e54547f478
