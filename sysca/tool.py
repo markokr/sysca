@@ -384,7 +384,7 @@ def export_command(args):
         do_output(obj, args)
 
 
-def export_pubkey_command(args):
+def export_pub_command(args):
     """Dump public key.
     """
     psw = load_password(args.password_file)
@@ -542,9 +542,17 @@ def opts_file(p):
 # collect per-command switches
 #
 
+def loadhelp(func):
+    """Convert docstring to add_parser() args
+    """
+    doc = func.__doc__.strip()
+    return {'help': doc, 'description': doc}
+
 
 def setup_args_newkey(sub):
-    p = sub.add_parser("new-key", help="Generate new EC, RSA or DSA key.")
+    """Generate new EC, RSA or DSA key.
+    """
+    p = sub.add_parser("new-key", **loadhelp(setup_args_newkey))
     p.set_defaults(command=newkey_command)
 
     p.add_argument("keytype", nargs="?", help="Key type can be either "
@@ -556,7 +564,9 @@ def setup_args_newkey(sub):
 
 
 def setup_args_request(sub):
-    p = sub.add_parser("request", help="Create certificate signing request (CSR)")
+    """Create certificate signing request (CSR)
+    """
+    p = sub.add_parser("request", **loadhelp(setup_args_request))
     p.set_defaults(command=req_command)
 
     g = p.add_argument_group("Input key")
@@ -572,7 +582,9 @@ def setup_args_request(sub):
 
 
 def setup_args_sign(sub):
-    p = sub.add_parser("sign", help="Create certificate (CRT) based on existing request")
+    """Create certificate (CRT) based on existing request
+    """
+    p = sub.add_parser("sign", **loadhelp(setup_args_sign))
     p.set_defaults(command=sign_command)
 
     g = p.add_argument_group("Output")
@@ -591,7 +603,9 @@ def setup_args_sign(sub):
 
 
 def setup_args_selfsign(sub):
-    p = sub.add_parser("selfsign", help="Create certificate by selfsigning with input key")
+    """Create certificate by selfsigning with input key
+    """
+    p = sub.add_parser("selfsign", **loadhelp(setup_args_selfsign))
     p.set_defaults(command=selfsign_command)
 
     g = p.add_argument_group("Output")
@@ -608,7 +622,9 @@ def setup_args_selfsign(sub):
 
 
 def setup_args_update_crl(sub):
-    p = sub.add_parser("update-crl", help="Create or update Certificate Revocation List (CRL)")
+    """Create or update Certificate Revocation List (CRL)
+    """
+    p = sub.add_parser("update-crl", **loadhelp(setup_args_update_crl))
     p.set_defaults(command=update_crl_command)
 
     g = p.add_argument_group("Output")
@@ -624,7 +640,9 @@ def setup_args_update_crl(sub):
 
 
 def setup_args_export(sub):
-    p = sub.add_parser("export", help="Reformat file")
+    """Reformat file
+    """
+    p = sub.add_parser("export", **loadhelp(setup_args_export))
     p.set_defaults(command=export_command)
 
     g = p.add_argument_group("Output")
@@ -635,9 +653,11 @@ def setup_args_export(sub):
     opts_password(p)
 
 
-def setup_args_export_pubkey(sub):
-    p = sub.add_parser("export-pubkey", help="Extract public key from certificate or certificate request")
-    p.set_defaults(command=export_pubkey_command)
+def setup_args_export_pub(sub):
+    """Extract public key from certificate or certificate request
+    """
+    p = sub.add_parser("export-pub", **loadhelp(setup_args_export_pub))
+    p.set_defaults(command=export_pub_command)
 
     g = p.add_argument_group("Output")
     opts_output(g)
@@ -648,7 +668,9 @@ def setup_args_export_pubkey(sub):
 
 
 def setup_args_show(sub):
-    p = sub.add_parser("show", help="Show file contents")
+    """Show file contents in readable form.
+    """
+    p = sub.add_parser("show", **loadhelp(setup_args_show))
     p.set_defaults(command=show_command)
 
     opts_text(p)
@@ -658,7 +680,9 @@ def setup_args_show(sub):
 
 
 def setup_args_list_curves(sub):
-    p = sub.add_parser("list-curves", help="Show available EC curves")
+    """Show available EC curves
+    """
+    p = sub.add_parser("list-curves", **loadhelp(setup_args_list_curves))
     p.set_defaults(command=list_curves_command)
 
 #
@@ -673,8 +697,7 @@ def setup_args():
     topargs["allow_abbrev"] = False
     topargs["fromfile_prefix_chars"] = "@"
     topargs["prog"] = "sysca"
-    #topargs["usage"] = "usage"
-    #topargs["description"] = "SysCA certificate manager"
+    topargs["description"] = "Run any COMMAND with --help switch to get command-specific help."
 
     top = argparse.ArgumentParser(**topargs)
     opts_top(top)
@@ -688,7 +711,7 @@ def setup_args():
     setup_args_update_crl(sub)
     setup_args_show(sub)
     setup_args_export(sub)
-    setup_args_export_pubkey(sub)
+    setup_args_export_pub(sub)
     setup_args_list_curves(sub)
     return top
 

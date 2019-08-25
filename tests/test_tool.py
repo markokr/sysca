@@ -277,31 +277,31 @@ def test_export_der(capsys, tmp_path):
     res = capsys.readouterr()
 
 
-def test_export_pubkey(capsys):
-    assert 0 == sysca("export-pubkey", demo_fn("ec-p256-ca.csr"))
+def test_export_pub(capsys):
+    assert 0 == sysca("export-pub", demo_fn("ec-p256-ca.csr"))
     res = capsys.readouterr()
     assert res.out == demo_data("ec-p256.pub", "r")
 
-    assert 0 == sysca("export-pubkey", demo_fn("ec-p256-ca.crt"))
+    assert 0 == sysca("export-pub", demo_fn("ec-p256-ca.crt"))
     res = capsys.readouterr()
     assert res.out == demo_data("ec-p256.pub", "r")
 
-    assert 0 == sysca("export-pubkey", demo_fn("ec-p256.pub"))
+    assert 0 == sysca("export-pub", demo_fn("ec-p256.pub"))
     res = capsys.readouterr()
     assert res.out == demo_data("ec-p256.pub", "r")
 
-    assert 0 == sysca("export-pubkey", demo_fn("ec-p256.pub"), "--outform=ssh")
+    assert 0 == sysca("export-pub", demo_fn("ec-p256.pub"), "--outform=ssh")
     res = capsys.readouterr()
     assert "ecdsa-sha2-nistp256" in res.out
 
-    assert 0 == sysca("export-pubkey", demo_fn("ec-p256.key"))
+    assert 0 == sysca("export-pub", demo_fn("ec-p256.key"))
     res = capsys.readouterr()
     assert res.out == demo_data("ec-p256.pub", "r")
 
-    assert 0 != sysca("export-pubkey", demo_fn("ec-p256-ca.crl"))
+    assert 0 != sysca("export-pub", demo_fn("ec-p256-ca.crl"))
     res = capsys.readouterr()
 
-    assert 0 != sysca("export-pubkey", demo_fn("password.txt"))
+    assert 0 != sysca("export-pub", demo_fn("password.txt"))
     res = capsys.readouterr()
 
 

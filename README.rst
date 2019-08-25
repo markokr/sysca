@@ -510,8 +510,8 @@ Options:
 **--password-file FN**
     Password file for CA private key.  Can be PGP-encrypted.
 
-export-pubkey
-~~~~~~~~~~~~~
+export-pub
+~~~~~~~~~~
 
 Reads certificate, certificate request or private key file and outputs it's public key.
 
