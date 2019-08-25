@@ -463,87 +463,6 @@ class CertInfo:
         # configured builder
         return builder
 
-    def generate_request(self, privkey):
-        """Create x509.CertificateSigningRequest based on current info.
-        """
-        if not valid_privkey(privkey):
-            raise InvalidCertificate("Invalid subjects private key")
-        builder = x509.CertificateSigningRequestBuilder()
-        builder = builder.subject_name(make_name(self.subject))
-        builder = self.install_extensions(builder)
-
-        # create final request
-        req = builder.sign(private_key=privkey,
-                           algorithm=get_hash_algo(privkey, "CSR"),
-                           backend=default_backend())
-        return req
-
-    def generate_certificate(self, subject_pubkey, issuer_info, issuer_privkey,
-                             serial_number=None, days=None,
-                             not_valid_before=None, not_valid_after=None):
-        """Create x509.Certificate based on current info.
-        """
-        if not same_pubkey(issuer_privkey, issuer_info):
-            raise InvalidCertificate("Issuer private key does not match certificate")
-        if not valid_pubkey(subject_pubkey):
-            raise InvalidCertificate("Invalid subjects public key")
-
-        # need ca rights, unless selfsigned
-        if not same_pubkey(subject_pubkey, issuer_privkey.public_key()):
-            if not issuer_info.ca:
-                raise InvalidCertificate("Issuer must be CA.")
-            if "key_cert_sign" not in issuer_info.usage:
-                raise InvalidCertificate("Issuer CA is not allowed to sign certs.")
-
-            if self.ca:
-                # not self-signing, check depth
-                if issuer_info.path_length is None:
-                    pass
-                elif issuer_info.path_length == 0:
-                    raise InvalidCertificate("Issuer cannot sign sub-CAs")
-                elif self.path_length is None:
-                    self.path_length = issuer_info.path_length - 1
-                elif issuer_info.path_length - 1 < self.path_length:
-                    raise InvalidCertificate("--path-length not allowed by issuer")
-
-        # calculare time period
-        not_valid_before, not_valid_after = parse_time_period(days, not_valid_before, not_valid_after)
-
-        # set serial
-        serial_number = maybe_parse_str(serial_number, parse_number, int)
-        if serial_number is None:
-            serial_number = new_serial_number()
-
-        # create builder
-        builder = (x509.CertificateBuilder()
-                   .subject_name(make_name(self.subject))
-                   .issuer_name(make_name(issuer_info.subject))
-                   .not_valid_before(not_valid_before)
-                   .not_valid_after(not_valid_after)
-                   .serial_number(serial_number)
-                   .public_key(subject_pubkey))
-
-        builder = self.install_extensions(builder)
-
-        # SubjectKeyIdentifier
-        ext = x509.SubjectKeyIdentifier.from_public_key(subject_pubkey)
-        builder = builder.add_extension(ext, critical=False)
-
-        # AuthorityKeyIdentifier
-        ext = x509.AuthorityKeyIdentifier.from_issuer_public_key(issuer_privkey.public_key())
-        builder = builder.add_extension(ext, critical=False)
-
-        # IssuerAlternativeName
-        if issuer_info.san:
-            ext = x509.IssuerAlternativeName(make_gnames(issuer_info.san))
-            builder = builder.add_extension(ext, critical=False)
-
-        # final cert
-        cert = builder.sign(private_key=issuer_privkey,
-                            algorithm=get_hash_algo(issuer_privkey, "CRT"),
-                            backend=default_backend())
-        return cert
-
     def show(self, writeln):
         """Print out details.
         """
@@ -614,19 +533,39 @@ def create_x509_req(privkey, subject_info):
         subject_info = CertInfo(load=subject_info)
     elif not isinstance(subject_info, CertInfo):
         raise ValueError("Expect certinfo")
-    return subject_info.generate_request(privkey)
 
+    builder = x509.CertificateSigningRequestBuilder()
+    builder = builder.subject_name(make_name(subject_info.subject))
+    builder = subject_info.install_extensions(builder)
+
+    # create final request
+    req = builder.sign(private_key=privkey,
+                       algorithm=get_hash_algo(privkey, "CSR"),
+                       backend=default_backend())
+    return req
+
+def validate_issuer(issuer_info):
+    if not issuer_info.ca:
+        raise InvalidCertificate("Issuer must be CA.")
+    if "key_cert_sign" not in issuer_info.usage:
+        raise InvalidCertificate("Issuer CA is not allowed to sign certs.")
+
+def validate_subject_ca(subject_info, issuer_info):
+    # not self-signing, check depth
+    if issuer_info.path_length is None:
+        pass
+    elif issuer_info.path_length == 0:
+        raise InvalidCertificate("Issuer cannot sign sub-CAs")
+    elif subject_info.path_length is None:
+        subject_info.path_length = issuer_info.path_length - 1
+    elif issuer_info.path_length - 1 < subject_info.path_length:
+        raise InvalidCertificate("--path-length not allowed by issuer")
 
 def create_x509_cert(issuer_privkey, subject_pubkey, subject_info, issuer_info,
                      days=None, serial_number=None,
                      not_valid_before=None, not_valid_after=None):
     """Create x509.Certificate
     """
-    if not valid_privkey(issuer_privkey):
-        raise ValueError("Invalid issuer private key")
-    if not valid_pubkey(subject_pubkey):
-        raise ValueError("Invalid subject public key")
-
     if isinstance(subject_info, x509.CertificateSigningRequest):
         subject_info = CertInfo(load=subject_info)
     elif not isinstance(subject_info, CertInfo):
@@ -637,6 +576,55 @@ def create_x509_cert(issuer_privkey, subject_pubkey, subject_info, issuer_info,
     elif not isinstance(issuer_info, CertInfo):
         raise ValueError("Expect issuer_info to be CertInfo or x509.Certificate")
 
-    return subject_info.generate_certificate(subject_pubkey, issuer_info, issuer_privkey,
-                                             days=days, serial_number=serial_number,
-                                             not_valid_before=not_valid_before, not_valid_after=not_valid_after)
+    if not valid_privkey(issuer_privkey):
+        raise ValueError("Invalid issuer private key")
+    if not valid_pubkey(subject_pubkey):
+        raise ValueError("Invalid subject public key")
+
+    if not same_pubkey(issuer_privkey, issuer_info):
+        raise InvalidCertificate("Issuer private key does not match certificate")
+
+    # need ca rights, unless selfsigned
+    if not same_pubkey(subject_pubkey, issuer_privkey.public_key()):
+        validate_issuer(issuer_info)
+        if subject_info.ca:
+            validate_subject_ca(subject_info, issuer_info)
+
+    # calculare time period
+    not_valid_before, not_valid_after = parse_time_period(days, not_valid_before, not_valid_after)
+
+    # set serial
+    serial_number = maybe_parse_str(serial_number, parse_number, int)
+    if serial_number is None:
+        serial_number = new_serial_number()
+
+    # create builder
+    builder = (x509.CertificateBuilder()
+               .subject_name(make_name(subject_info.subject))
+               .issuer_name(make_name(issuer_info.subject))
+               .not_valid_before(not_valid_before)
+               .not_valid_after(not_valid_after)
+               .serial_number(serial_number)
+               .public_key(subject_pubkey))
+
+    builder = subject_info.install_extensions(builder)
+
+    # SubjectKeyIdentifier
+    ext = x509.SubjectKeyIdentifier.from_public_key(subject_pubkey)
+    builder = builder.add_extension(ext, critical=False)
+
+    # AuthorityKeyIdentifier
+    ext = x509.AuthorityKeyIdentifier.from_issuer_public_key(issuer_privkey.public_key())
+    builder = builder.add_extension(ext, critical=False)
+
+    # IssuerAlternativeName
+    if issuer_info.san:
+        ext = x509.IssuerAlternativeName(make_gnames(issuer_info.san))
+        builder = builder.add_extension(ext, critical=False)
+
+    # final cert
+    cert = builder.sign(private_key=issuer_privkey,
+                        algorithm=get_hash_algo(issuer_privkey, "CRT"),
+                        backend=default_backend())
+    return cert
+

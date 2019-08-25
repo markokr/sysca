@@ -37,10 +37,10 @@ def process_crl(ca_key, ca_info):
     crl.delta_crl_number = 9
     crl.crl_number = 10
 
-    crlobj = crl.generate_crl(ca_key, ca_info, days=30)
+    crlobj = sysca.create_x509_crl(ca_key, ca_info, crl, days=30)
 
     crl2 = sysca.CRLInfo(load=crlobj)
-    crl2obj = crl2.generate_crl(ca_key, ca_info, days=30)
+    crl2obj = sysca.create_x509_crl(ca_key, ca_info, crl, days=30)
 
     data = sysca.serialize(crl2obj)
     fd, name = tempfile.mkstemp()

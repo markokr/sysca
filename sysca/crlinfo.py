@@ -308,41 +308,12 @@ class CRLInfo:
 
         return builder
 
-    def generate_crl(self, issuer_privkey, issuer_info, days=None,
-                     last_update=None, next_update=None):
-        """Return x509.CertificateRevocationList.
-        """
-        if "crl_sign" not in issuer_info.usage:
-            raise InvalidCertificate("CA cert needs to have crl_sign usage set.")
-
-        last_update, next_update = parse_time_period(days, last_update, next_update, gap=0)
-
-        builder = x509.CertificateRevocationListBuilder()
-        builder = builder.issuer_name(make_name(issuer_info.subject))
-        builder = builder.last_update(last_update)
-        builder = builder.next_update(next_update)
-        builder = self.install_extensions(builder)
-
-        # IssuerAlternativeName
-        if issuer_info.san:
-            ext = x509.IssuerAlternativeName(make_gnames(issuer_info.san))
-            builder = builder.add_extension(ext, critical=False)
-
-        # AuthorityKeyIdentifier
-        ext = x509.AuthorityKeyIdentifier.from_issuer_public_key(issuer_privkey.public_key())
-        builder = builder.add_extension(ext, critical=False)
-
-        # add revoked certs
-        cur_gnames = to_issuer_gnames(issuer_info.subject, issuer_info.san)
+    def install_revoked_certs(self, builder, cur_gnames):
         for rev_cert in self.revoked_list:
             rcert = rev_cert.generate_rcert(self.indirect_crl, cur_gnames)
             builder = builder.add_revoked_certificate(rcert)
             cur_gnames = rev_cert.issuer_gnames
-
-        crl = builder.sign(private_key=issuer_privkey,
-                           algorithm=get_hash_algo(issuer_privkey, "CRL"),
-                           backend=default_backend())
-        return crl
+        return builder
 
     def show(self, writeln):
         """Print out details.
@@ -408,5 +379,32 @@ def create_x509_crl(issuer_privkey, issuer_info, crl_info, days=None,
     if not isinstance(crl_info, CRLInfo):
         crl_info = CRLInfo(load=crl_info)
 
-    return crl_info.generate_crl(issuer_privkey, issuer_info, days=days,
-                                 last_update=last_update, next_update=next_update)
+    if "crl_sign" not in issuer_info.usage:
+        raise InvalidCertificate("Signing certificate needs to have crl_sign usage set.")
+
+    last_update, next_update = parse_time_period(days, last_update, next_update, gap=0)
+
+    builder = x509.CertificateRevocationListBuilder()
+    builder = builder.issuer_name(make_name(issuer_info.subject))
+    builder = builder.last_update(last_update)
+    builder = builder.next_update(next_update)
+    builder = crl_info.install_extensions(builder)
+
+    # add revoked certs
+    cur_gnames = to_issuer_gnames(issuer_info.subject, issuer_info.san)
+    builder = crl_info.install_revoked_certs(builder, cur_gnames)
+
+    # IssuerAlternativeName
+    if issuer_info.san:
+        ext = x509.IssuerAlternativeName(make_gnames(issuer_info.san))
+        builder = builder.add_extension(ext, critical=False)
+
+    # AuthorityKeyIdentifier
+    ext = x509.AuthorityKeyIdentifier.from_issuer_public_key(issuer_privkey.public_key())
+    builder = builder.add_extension(ext, critical=False)
+
+    crl = builder.sign(private_key=issuer_privkey,
+                       algorithm=get_hash_algo(issuer_privkey, "CRL"),
+                       backend=default_backend())
+    return crl
+

@@ -228,6 +228,7 @@ def sign_command(args):
                    path_length=args.path_length, reqInfo=args.request,
                    not_valid_before=args.not_valid_before,
                    not_valid_after=args.not_valid_after,
+                   serial_number=args.serial_number,
                    days=args.days, reset_info=reset_info)
 
     # Write certificate
