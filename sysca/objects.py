@@ -265,6 +265,7 @@ def serialize(obj, encoding="pem", password=None):
         elif password:
             hide = BestAvailableEncryption(as_bytes(password))
         if encoding == "ssh":
+            enc = Encoding.PEM
             fmt = PrivateFormat.TraditionalOpenSSL
         res = obj.private_bytes(enc, fmt, hide)
     elif password is not None:
