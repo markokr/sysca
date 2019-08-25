@@ -1,0 +1,50 @@
+Version: 3
+Public key: ec:secp256r1
+Not Valid Before: 1995-12-24 00:00:00
+Not Valid After: 2195-12-24 00:00:00
+Serial: ff
+Subject: /CN=commonName/C=US/L=Locality/ST=State/O=org/OU=unit1of2/OU=unit2of2/SA=streetAddr_1of3/SA=Fooza 1\/2/SA=Läft 4\\b/PA=post1/PA=post2/BC=bzcat1/BC=bzcat2/DC=dom1/DC=dom2/SN=surname/GN=givenName/T=title/P=pseudo/GQ=genq/DQ=dnQ/UID=uid/XUID=x500uid/EMAIL=e@ma.il/SERIAL=xserial/PC=postCode/JC=US/JL=jLocal/JST=jState/
+Subject Alternative Name:
+  dns:*.example.com
+  ip:127.0.0.1
+  ip:8000::1
+  net:10.0.0.0/8
+  net:ff80::/64
+  uri:http://local/
+  email:me@qqq.com
+  dn:/T=Lęt/
+CA: True
+Path Length: 0
+Usage: digital_signature, content_commitment, key_encipherment, data_encipherment, key_agreement, key_cert_sign, crl_sign, client, server, code, email, time, ocsp, any
+Subject Key Identifier: 4a34eef58d6fb08aee79da087f7094b1886ec3c7
+Authority Key Identifier: 4a34eef58d6fb08aee79da087f7094b1886ec3c7
+Issuer Name: /CN=commonName/C=US/L=Locality/ST=State/O=org/OU=unit1of2/OU=unit2of2/SA=streetAddr_1of3/SA=Fooza 1\/2/SA=Läft 4\\b/PA=post1/PA=post2/BC=bzcat1/BC=bzcat2/DC=dom1/DC=dom2/SN=surname/GN=givenName/T=title/P=pseudo/GQ=genq/DQ=dnQ/UID=uid/XUID=x500uid/EMAIL=e@ma.il/SERIAL=xserial/PC=postCode/JC=US/JL=jLocal/JST=jState/
+Issuer SAN:
+  dns:*.example.com
+  ip:127.0.0.1
+  ip:8000::1
+  net:10.0.0.0/8
+  net:ff80::/64
+  uri:http://local/
+  email:me@qqq.com
+  dn:/T=Lęt/
+Issuer URLs:
+  http://ftp.example.com/ca.crt
+  http://ftp2.example.com/ca.crt
+OCSP URLs:
+  http://ocsp0.example.com
+  http://ocsp1.example.com
+CRL URLs:
+  http://crl0.example.com
+  http://crl1.example.com
+OCSP NoCheck: True
+TLS Features:
+  status_request
+  status_request_v2
+Inhibit ANY policy: skip_certs=5
+Policy Constraint - Require Explicit Policy: 3
+Policy Constraint - Inhibit Policy Mapping: 2
+Certificate Policies:
+  1.2.3.4:|P=localhost|,|P=internal|
+  2.3.4.5:|O=org|N=1:2:3|T=words|,|T=more|,|O=only|,|N=1|
+  2.5.29.32.0

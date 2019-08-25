@@ -1,15 +1,14 @@
 
 import sys
-import os.path
-import binascii
-from datetime import datetime
-
 import pytest
 
-from sysca.tool import run_sysca
-from sysca.keys import set_unsafe
+from cryptography import x509
+from cryptography.hazmat.backends import default_backend
 
-FDIR = os.path.join(os.path.dirname(__file__), "files")
+from sysca.tool import run_sysca
+from sysca.api import set_unsafe, CertInfo
+
+from helpers import demo_fn, demo_raw, demo_data
 
 
 def sysca(*args):
@@ -24,27 +23,6 @@ def sysca(*args):
     except Exception as ex:
         sys.stderr.write(str(ex) + "\n")
         return 1
-
-
-def demo_fn(basename):
-    return os.path.join(FDIR, basename)
-
-
-def demo_data(basename, mode="rb"):
-    with open(demo_fn(basename), mode) as f:
-        return f.read()
-
-
-def demo_raw(basename):
-    return depem(demo_data(basename))
-
-
-def depem(data):
-    if isinstance(data, str):
-        data = data.encode("ascii")
-    p1 = data.find(b"-----\n") + 6
-    p2 = data.find(b"\n-----", p1)
-    return binascii.a2b_base64(data[p1:p2])
 
 
 def test_no_command(capsys):
@@ -116,9 +94,14 @@ def test_list_curves(capsys):
 
 
 def test_show(capsys):
-    assert sysca("show", demo_fn("letsencrypt-org.crt")) == 0
-    res = capsys.readouterr()
-    assert res.out == demo_data("letsencrypt-org.crt.out", "r")
+    files = [
+        "ec-p256-ca.crt", "ec-p256-ca.csr", "ec-p256-ca.crl",
+        "letsencrypt-org.crt", "ec2-rich.csr", "ec2-rich.crt",
+    ]
+    for fn in files:
+        assert sysca("show", demo_fn(fn)) == 0
+        res = capsys.readouterr()
+        assert res.out == demo_data(fn + ".out", "r")
 
     assert sysca("show", demo_fn("password.txt")) >= 1
     capsys.readouterr()
@@ -135,18 +118,6 @@ def test_show(capsys):
     assert sysca("show", demo_fn("ec-p256.psw.key"), "--password-file", demo_fn("password.txt")) == 0
     capsys.readouterr()
 
-    assert sysca("show", demo_fn("ec-p256-ca.crt")) == 0
-    res = capsys.readouterr()
-    assert res.out == demo_data("ec-p256-ca.crt.out", "r")
-
-    assert sysca("show", demo_fn("ec-p256-ca.csr")) == 0
-    res = capsys.readouterr()
-    assert res.out == demo_data("ec-p256-ca.csr.out", "r")
-
-    assert sysca("show", demo_fn("ec-p256-ca.crl")) == 0
-    res = capsys.readouterr()
-    assert res.out == demo_data("ec-p256-ca.crl.out", "r")
-
 
 def test_request(capsys):
     assert sysca("request",
@@ -160,7 +131,7 @@ def test_request(capsys):
     res = capsys.readouterr()
     assert "REQUEST" not in res.out
 
-    assert sysca("request",
+    assert sysca("request", "--CA", "--usage=client",
                  "--key", demo_fn("ec-p256.psw.key"),
                  "--password-file", demo_fn("password.txt"),
                  "--subject", "CN=foo") == 0
@@ -186,6 +157,42 @@ def test_sign(capsys):
     res = capsys.readouterr()
     assert "CERTIFICATE" in res.out
 
+
+def test_sign_reset(capsys):
+    assert 0 == sysca("sign",
+                      "--ca-key", demo_fn("ec-p256.key"),
+                      "--ca-info", demo_fn("ec-p256-ca.crt"),
+                      "--request", demo_fn("ec-p256-ca.csr"),
+                      "--serial-number=2",
+                      "--days=300",
+                      ) == 0
+    res = capsys.readouterr()
+    assert "CERTIFICATE" in res.out
+    cert1 = res.out.encode("utf8")
+
+    assert 0 == sysca("sign", "--reset",
+                      "--usage=client", "--subject=/CN=override/",
+                      "--ca-key", demo_fn("ec-p256.key"),
+                      "--ca-info", demo_fn("ec-p256-ca.crt"),
+                      "--request", demo_fn("ec-p256-ca.csr"),
+                      "--serial-number=3",
+                      "--days=10",
+                      ) == 0
+    res = capsys.readouterr()
+    assert "CERTIFICATE" in res.out
+    cert2 = res.out.encode("utf8")
+
+    obj1 = x509.load_pem_x509_certificate(cert1, default_backend())
+    obj2 = x509.load_pem_x509_certificate(cert2, default_backend())
+    info1 = CertInfo(load=obj1)
+    info2 = CertInfo(load=obj2)
+    assert info1.ca == True
+    assert info2.ca == False
+    assert info1.serial_number == 2 and info2.serial_number == 3
+    assert info1.subject == [("CN", "ecreq")]
+    assert info2.subject == [("CN", "override")]
+    assert "key_cert_sign" in info1.usage and "key_cert_sign" not in info2.usage
+    assert "client" in info2.usage and "client" not in info1.usage
 
 def test_sign_openssl(capsys):
     assert 0 == sysca("sign", "--text",
@@ -213,6 +220,13 @@ def test_selfsign(capsys):
     res = capsys.readouterr()
     assert "CERTIFICATE" in res.out
 
+    assert 0 == sysca("selfsign",
+                      "--key", demo_fn("ec-p256.key"),
+                      "--days", "2050",
+                      "--subject", "CN=foo")
+    res = capsys.readouterr()
+    assert "CERTIFICATE" in res.out
+
 
 def test_export(capsys):
     assert 0 == sysca("export", demo_fn("ec-p256-ca.csr"))
@@ -234,6 +248,14 @@ def test_export(capsys):
     assert 0 == sysca("export", demo_fn("ec-p256-ca.crl"))
     res = capsys.readouterr()
     assert res.out == demo_data("ec-p256-ca.crl", "r")
+
+    assert 0 == sysca("export", demo_fn("ec-p256.key"), "--outform=ssh")
+    res = capsys.readouterr()
+    assert " EC PRIVATE " in res.out
+
+    assert 0 == sysca("export", demo_fn("rsa1.key"), "--outform=ssh")
+    res = capsys.readouterr()
+    assert " RSA PRIVATE " in res.out
 
 
 def test_export_der(capsys, tmp_path):
@@ -267,6 +289,10 @@ def test_export_pubkey(capsys):
     assert 0 == sysca("export-pubkey", demo_fn("ec-p256.pub"))
     res = capsys.readouterr()
     assert res.out == demo_data("ec-p256.pub", "r")
+
+    assert 0 == sysca("export-pubkey", demo_fn("ec-p256.pub"), "--outform=ssh")
+    res = capsys.readouterr()
+    assert "ecdsa-sha2-nistp256" in res.out
 
     assert 0 == sysca("export-pubkey", demo_fn("ec-p256.key"))
     res = capsys.readouterr()
@@ -342,3 +368,4 @@ def test_show_openssl(capsys):
     assert 0 == sysca("show", demo_fn("ec-p256-ca.crl"), "--text")
     res = capsys.readouterr()
     assert "X509 CRL" in res.out
+

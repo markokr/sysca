@@ -27,7 +27,6 @@ for ca in subca1 subca2; do
     --subject "/CN=${ca}/" \
     --san "dn:/CN=${ca}.ca/" \
     --CA \
-    --days 900 \
     --key tmp/${pfx}_${ca}.key \
     --out tmp/${pfx}_${ca}.csr
 
@@ -49,7 +48,6 @@ for ca in ca subca1 subca2; do
     sysca new-key ec --out "${userpfx}.key"
     sysca request \
       --subject "/CN=${ca}_${user}/" \
-      --days 900 \
       --key "${userpfx}.key" \
       --out "${userpfx}.csr"
 

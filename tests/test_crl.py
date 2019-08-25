@@ -8,6 +8,8 @@ import sysca.api as sysca
 
 from cryptography import x509
 
+from helpers import new_root, new_cert
+
 HAS_DPOINT = hasattr(x509, "IssuingDistributionPoint")
 
 
@@ -16,20 +18,6 @@ def zfilter(ln):
     ln = re.sub(r"Serial: .*", "Serial: SN", ln)
     ln = re.sub(r"Authority Key Identifier: .*", "Authority Key Identifier: KeyID", ln)
     return ln
-
-
-def new_root(ktype="ec", **kwargs):
-    ca_key = sysca.new_key(ktype)
-    ca_info = sysca.CertInfo(ca=True, load=ca_key, **kwargs)
-    ca_cert = sysca.create_x509_cert(ca_key, ca_key.public_key(), ca_info, ca_info, 365)
-    return ca_key, ca_cert
-
-
-def new_cert(ca_key, ca_info, ktype="ec", **kwargs):
-    key = sysca.new_key(ktype)
-    info = sysca.CertInfo(**kwargs)
-    cert = sysca.create_x509_cert(ca_key, key.public_key(), info, ca_info, 365)
-    return key, cert
 
 
 def dump_crl(crl):

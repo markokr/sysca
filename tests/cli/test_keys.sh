@@ -5,7 +5,7 @@ set -e
 . $(dirname $0)/lib.sh
 
 ec_list=""
-for curve in $(sysca show-curves); do
+for curve in $(sysca list-curves); do
   ec_list="${ec_list} ec:${curve}"
 done
 

@@ -1,21 +1,10 @@
-
-import os.path
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pytest
 
 import sysca.api as sysca
 
-FDIR = os.path.join(os.path.dirname(__file__), "files")
-
-
-def demo_fn(basename):
-    return os.path.join(FDIR, basename)
-
-
-def demo_data(basename, mode="rb"):
-    with open(demo_fn(basename), mode) as f:
-        return f.read()
+from helpers import demo_fn, demo_data, new_root, new_cert
 
 
 def dump(obj):
@@ -28,10 +17,7 @@ def dump(obj):
 
 def test_sysca():
     # create ca key and cert
-    ca_key = sysca.new_ec_key()
-    ca_pub_key = ca_key.public_key()
-    ca_info = sysca.CertInfo(subject={"CN": "TestCA"}, ca=True, load=ca_pub_key)
-    ca_certobj = sysca.create_x509_cert(ca_key, ca_pub_key, ca_info, ca_info, 365)
+    ca_key, ca_certobj = new_root(subject={"CN": "TestCA"})
     ca_cert = sysca.CertInfo(load=ca_certobj)
     assert ca_cert.ca
 
@@ -66,6 +52,9 @@ def test_render_name():
     d = (("CN", "name"), ("O", "org"))
     assert sysca.render_name(d) == "/CN=name/O=org/"
     assert sysca.parse_dn(r" CN =name / / O = \x6frg ") == d
+
+    with pytest.raises(ValueError, match="Need"):
+        sysca.parse_dn(r"/CN/")
 
     d += (("X", r"x\b/z"),)
     w = sysca.render_name(d)
@@ -156,6 +145,13 @@ def test_passthrough():
     req = sysca.create_x509_req(key, info)
     info2 = sysca.CertInfo(load=req)
 
+    assert info2.inhibit_any == 6
+    assert info2.path_length == 3
+    assert info2.require_explicit_policy == 2
+    assert info2.inhibit_policy_mapping == 3
+    assert info2.ocsp_must_staple and info2.ocsp_must_staple_v2
+    assert info2.ca and info2.ocsp_nocheck
+
     lst1 = []
     lst2 = []
     info.show(lst1.append)
@@ -190,7 +186,7 @@ def test_autodetect():
         assert sysca.autodetect_filename(demo_fn(fn)) == t
         assert sysca.autodetect_file(demo_fn(fn)) == t
 
-    assert sysca.autodetect_data(os.urandom(64)) is None
+    assert sysca.autodetect_data(b'\x01\x02asdadsasdasd') is None
 
     other = (b"-----BEGIN GPG-----\n" +
              b"113414241424\n" +
@@ -232,6 +228,30 @@ def test_parse_timestamp():
 
     with pytest.raises(ValueError):
         sysca.parse_timestamp("")
+
+
+def test_parse_time_period():
+    d1, d2 = sysca.parse_time_period("300")
+    assert d2 - d1 > timedelta(days=290)
+    assert d2 - d1 < timedelta(days=310)
+
+    d1, d2 = sysca.parse_time_period(not_valid_after="2200-01-01")
+    assert d2 - d1 > timedelta(days=15*365)
+
+    d1, d2 = sysca.parse_time_period(not_valid_before="1989-01-01", not_valid_after="1995-01-01")
+    assert d2 - d1 > timedelta(days=5*365)
+
+    d1, d2 = sysca.parse_time_period(not_valid_before=datetime(1989, 1, 1), not_valid_after=datetime(1995, 1, 1))
+    assert d2 - d1 > timedelta(days=5*365)
+
+    with pytest.raises(ValueError, match="days"):
+        sysca.parse_time_period(not_valid_before="2001-01-01")
+
+    with pytest.raises(ValueError, match="range"):
+        sysca.parse_time_period(not_valid_before="2001-01-01", not_valid_after="2000-01-01")
+
+    with pytest.raises(ValueError):
+        sysca.parse_time_period(not_valid_before="2", not_valid_after=3)
 
 
 def test_parse_number():

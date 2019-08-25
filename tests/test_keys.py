@@ -8,7 +8,7 @@ import sysca.api as sysca
 
 EC_KEYS = ["ec"] + ["ec:" + n for n in sysca.get_ec_curves()]
 RSA_KEYS = ["rsa", "rsa:2048"]
-DSA_KEYS = ["dsa", "dsa:2048"]
+DSA_KEYS = ["dsa"] # dsa is slow
 
 
 def process_write(key):
@@ -74,6 +74,7 @@ def process_ktype(ktype):
     srv_certobj = sysca.create_x509_cert(ca_key, srv_req.public_key(), srv_info2, ca_cert, 365)
     srv_cert = sysca.CertInfo(load=srv_certobj)
     assert "server" in srv_cert.usage
+    srv_cert.show(lambda x: x)
 
     # test same key
     assert sysca.same_pubkey(ca_key, ca_key)
