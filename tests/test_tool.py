@@ -1,6 +1,5 @@
 
 import sys
-import pytest
 
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
@@ -186,13 +185,14 @@ def test_sign_reset(capsys):
     obj2 = x509.load_pem_x509_certificate(cert2, default_backend())
     info1 = CertInfo(load=obj1)
     info2 = CertInfo(load=obj2)
-    assert info1.ca == True
-    assert info2.ca == False
+    assert info1.ca is True
+    assert info2.ca is False
     assert info1.serial_number == 2 and info2.serial_number == 3
     assert info1.subject == [("CN", "ecreq")]
     assert info2.subject == [("CN", "override")]
     assert "key_cert_sign" in info1.usage and "key_cert_sign" not in info2.usage
     assert "client" in info2.usage and "client" not in info1.usage
+
 
 def test_sign_openssl(capsys):
     assert 0 == sysca("sign", "--text",
@@ -249,13 +249,21 @@ def test_export(capsys):
     res = capsys.readouterr()
     assert res.out == demo_data("ec-p256-ca.crl", "r")
 
-    assert 0 == sysca("export", demo_fn("ec-p256.key"), "--outform=ssh")
+    assert 0 == sysca("export", demo_fn("ec-p256.key"), "--outform=ssl")
     res = capsys.readouterr()
     assert " EC PRIVATE " in res.out
 
-    assert 0 == sysca("export", demo_fn("rsa1.key"), "--outform=ssh")
+    assert 0 == sysca("export", demo_fn("rsa1.key"), "--outform=ssl")
     res = capsys.readouterr()
     assert " RSA PRIVATE " in res.out
+
+    assert 0 == sysca("export", demo_fn("ec-p256.key"), "--outform=ssh")
+    res = capsys.readouterr()
+    assert " OPENSSH PRIVATE " in res.out
+
+    assert 0 == sysca("export", demo_fn("rsa1.key"), "--outform=ssh")
+    res = capsys.readouterr()
+    assert " OPENSSH PRIVATE " in res.out
 
 
 def test_export_der(capsys, tmp_path):
@@ -368,4 +376,3 @@ def test_show_openssl(capsys):
     assert 0 == sysca("show", demo_fn("ec-p256-ca.crl"), "--text")
     res = capsys.readouterr()
     assert "X509 CRL" in res.out
-

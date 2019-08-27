@@ -15,8 +15,8 @@ from .api import (
     CertInfo, CRLInfo,
     create_x509_cert, create_x509_req, create_x509_crl,
     get_ec_curves, new_key, same_pubkey, get_key_name,
-    serialize, load_key, load_req, load_cert, load_crl, load_pub_key,
-    load_password, autodetect_file, set_unsafe,
+    serialize, load_key, load_req, load_cert, load_crl,
+    load_password, load_file_any, set_unsafe,
     parse_list, render_name, render_serial, as_bytes,
     parse_number, parse_dn, to_issuer_gnames,
 )
@@ -311,21 +311,6 @@ def update_crl_command(args):
     do_output(res, args)
 
 
-def load_object_any(fn, password=None):
-    fmt = autodetect_file(fn)
-    if fmt == "csr":
-        return load_req(fn)
-    elif fmt == "crt":
-        return load_cert(fn)
-    elif fmt == "crl":
-        return load_crl(fn)
-    elif fmt == "pub":
-        return load_pub_key(fn)
-    elif fmt == "key":
-        return load_key(fn, password)
-    return die("Unsupported file: %s", fn)
-
-
 def show_command_sysca(args):
     """Dump .crt and .csr files.
     """
@@ -333,7 +318,7 @@ def show_command_sysca(args):
         sys.stdout.write(ln + "\n")
     psw = load_password(args.password_file)
     fn = args.file
-    obj = load_object_any(fn, password=psw)
+    obj = load_file_any(fn, password=psw)
     try:
         if isinstance(obj, (x509.Certificate, x509.CertificateSigningRequest)):
             CertInfo(load=obj).show(simple_write)
@@ -377,7 +362,7 @@ def export_command(args):
     """Rewrite data.
     """
     psw = load_password(args.password_file)
-    obj = load_object_any(args.file, password=psw)
+    obj = load_file_any(args.file, password=psw)
     if isinstance(obj, PRIVKEY_CLASSES):
         do_output(obj, args, psw)
     else:
@@ -388,7 +373,7 @@ def export_pub_command(args):
     """Dump public key.
     """
     psw = load_password(args.password_file)
-    obj = load_object_any(args.file, password=psw)
+    obj = load_file_any(args.file, password=psw)
     if isinstance(obj, PUBKEY_CLASSES):
         do_output(obj, args)
     elif hasattr(obj, "public_key"):
@@ -542,11 +527,12 @@ def opts_file(p):
 # collect per-command switches
 #
 
+
 def loadhelp(func):
     """Convert docstring to add_parser() args
     """
     doc = func.__doc__.strip()
-    return {'help': doc, 'description': doc}
+    return {"help": doc, "description": doc}
 
 
 def setup_args_newkey(sub):

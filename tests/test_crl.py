@@ -173,7 +173,7 @@ def test_indirect_items():
     crlobj = sysca.create_x509_crl(ca_key, ca_cert, crl, 30)
     crl2obj = sysca.create_x509_crl(ca_key, ca_cert, crlobj, 30)
     crl2 = sysca.CRLInfo(load=crl2obj)
-    assert crl2.indirect_crl == True
+    assert crl2.indirect_crl is True
     assert crl2.revoked_list[0].invalidity_date == datetime(2001, 10, 18, 21, 59, 59)
     assert crl2.revoked_list[0].serial_number == cert1.serial_number
     assert crl2.revoked_list[0].issuer_gnames == ["dn:/CN=IndirectCA/", "dn:/CN=IndAlt/"]
@@ -206,7 +206,7 @@ def test_scope_items():
         crlobj = sysca.create_x509_crl(ca_key, ca_cert, crl, 30)
         crl2obj = sysca.create_x509_crl(ca_key, ca_cert, crlobj, 30)
         crl2 = sysca.CRLInfo(load=crl2obj)
-        assert crl2.indirect_crl == False
+        assert crl2.indirect_crl is False
         assert crl2.crl_scope == scope
 
     rs = frozenset(["ca_compromise", "key_compromise"])
@@ -214,7 +214,7 @@ def test_scope_items():
     crlobj = sysca.create_x509_crl(ca_key, ca_cert, crl, 30)
     crl2obj = sysca.create_x509_crl(ca_key, ca_cert, crlobj, 30)
     crl2 = sysca.CRLInfo(load=crl2obj)
-    assert crl2.indirect_crl == False
+    assert crl2.indirect_crl is False
     assert crl2.only_some_reasons == rs
 
     urls = ["uri:http://f.co", "uri:https://s.co"]
@@ -222,5 +222,5 @@ def test_scope_items():
     crlobj = sysca.create_x509_crl(ca_key, ca_cert, crl, 30)
     crl2obj = sysca.create_x509_crl(ca_key, ca_cert, crlobj, 30)
     crl2 = sysca.CRLInfo(load=crl2obj)
-    assert crl2.indirect_crl == False
+    assert crl2.indirect_crl is False
     assert crl2.full_methods == urls

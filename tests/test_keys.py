@@ -3,12 +3,18 @@ import tempfile
 import os
 import pytest
 
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives.serialization import PublicFormat, Encoding
+
 import sysca.api as sysca
 
+from helpers import demo_fn, new_root, demo_data
 
 EC_KEYS = ["ec"] + ["ec:" + n for n in sysca.get_ec_curves()]
 RSA_KEYS = ["rsa", "rsa:2048"]
-DSA_KEYS = ["dsa"] # dsa is slow
+DSA_KEYS = ["dsa"]  # dsa is slow
+
+HAVE_EDDSA = "ed25519" in sysca.get_ec_curves()
 
 
 def process_write(key):
@@ -40,7 +46,7 @@ def process_crl(ca_key, ca_info):
     crlobj = sysca.create_x509_crl(ca_key, ca_info, crl, days=30)
 
     crl2 = sysca.CRLInfo(load=crlobj)
-    crl2obj = sysca.create_x509_crl(ca_key, ca_info, crl, days=30)
+    crl2obj = sysca.create_x509_crl(ca_key, ca_info, crl2, days=30)
 
     data = sysca.serialize(crl2obj)
     fd, name = tempfile.mkstemp()
@@ -129,3 +135,115 @@ def test_invalid_ktype():
         sysca.new_key("x")
     with pytest.raises(ValueError):
         sysca.new_key("x:x")
+
+
+def ssh_kformat(prefix, password, tmp_key):
+    sfx = "nopsw"
+    if password:
+        sfx = "psw"
+    kfn = demo_fn("%s-%s.key" % (prefix, sfx))
+
+    # load ssh private key
+    sk = sysca.load_file_any(kfn, password)
+    pktxt = open(kfn + ".pub", "rb").read()
+    pktxt2 = sk.public_key().public_bytes(Encoding.OpenSSH, PublicFormat.OpenSSH)
+    assert pktxt2 == pktxt[:len(pktxt2)]
+
+    # serialize ssh public key
+    pktxt3 = sysca.serialize(sk.public_key(), 'ssh').encode('ascii').strip()
+    assert pktxt2 == pktxt3
+
+    # load ssh public key
+    pkload = sysca.load_ssh_public_key(pktxt2, default_backend())
+    pkloadtxt = pkload.public_bytes(Encoding.OpenSSH, PublicFormat.OpenSSH)
+    assert pkloadtxt == pktxt2
+
+    # serialize ssh private key, try test autodetection
+    skpem = sysca.serialize(sk, 'ssh', password)
+    with open(tmp_key, "w") as f:
+        f.write(skpem)
+    sk2 = sysca.load_file_any(tmp_key, password)
+    pktxt4 = sk2.public_key().public_bytes(Encoding.OpenSSH, PublicFormat.OpenSSH)
+    assert pktxt4 == pktxt2
+
+    if 'ed25519' not in prefix:
+        ssl_priv_pem = sysca.serialize(sk, 'ssl', password)
+        with open(tmp_key, "w") as f:
+            f.write(ssl_priv_pem)
+        ssl_sk = sysca.load_file_any(tmp_key, password)
+        pktxt5 = ssl_sk.public_key().public_bytes(Encoding.OpenSSH, PublicFormat.OpenSSH)
+        assert pktxt5 == pktxt4
+    else:
+        if password:
+            with pytest.raises(ValueError):
+                sysca.serialize(sk, 'raw', password)
+            with pytest.raises(ValueError):
+                sysca.serialize(sk.public_key(), 'raw', password)
+        else:
+            raw1 = sysca.serialize(sk, 'raw', password)
+            assert len(raw1) == 32
+            raw2 = sysca.serialize(sk.public_key(), 'raw', password)
+            assert len(raw2) == 32
+
+
+def test_ssh_old(tmp_path):
+    tmp_key = str(tmp_path / "test.key")
+    ssh_kformat("ssh/old-ecdsa", "", tmp_key)
+    ssh_kformat("ssh/old-ecdsa", "password", tmp_key)
+    ssh_kformat("ssh/old-rsa", "", tmp_key)
+    ssh_kformat("ssh/old-rsa", "password", tmp_key)
+    ssh_kformat("ssh/old-dsa", "", tmp_key)
+    ssh_kformat("ssh/old-dsa", "password", tmp_key)
+
+
+@pytest.mark.skipif(not HAVE_EDDSA, reason="EdDSA not supported")
+def test_ssh_eddsa(tmp_path):
+    tmp_key = str(tmp_path / "test.key")
+    ssh_kformat("ssh/new-ed25519", "", tmp_key)
+    ssh_kformat("ssh/new-ed25519", "password", tmp_key)
+
+
+def test_ssh_new(tmp_path):
+    tmp_key = str(tmp_path / "test.key")
+    ssh_kformat("ssh/new-rsa", "", tmp_key)
+    ssh_kformat("ssh/new-rsa", "password", tmp_key)
+    ssh_kformat("ssh/new-dsa", "", tmp_key)
+    ssh_kformat("ssh/new-dsa", "password", tmp_key)
+    ssh_kformat("ssh/new-ecdsa", "", tmp_key)
+    ssh_kformat("ssh/new-ecdsa", "password", tmp_key)
+
+
+def process_ssh_cert(kfn):
+    pk = sysca.load_file_any(demo_fn(kfn + "-cert.pub"))
+    pktxt = pk.public_bytes(Encoding.OpenSSH, PublicFormat.OpenSSH)
+    pktxt2 = demo_data(kfn + ".pub")
+    assert pktxt == pktxt2[:len(pktxt)]
+
+
+def test_ssh_certs():
+    kfiles = [
+        "ssh-ca/ecdsa-user.key",
+        "ssh-ca/dsa-user.key",
+        "ssh-ca/rsa-sha1-user.key",
+        "ssh-ca/rsa-sha256-user.key",
+        "ssh-ca/rsa-sha512-user.key",
+    ]
+    for kfn in kfiles:
+        process_ssh_cert(kfn)
+
+
+@pytest.mark.skipif(not HAVE_EDDSA, reason="EdDSA not supported")
+def test_ssh_certs_eddsa(tmp_path):
+    process_ssh_cert("ssh-ca/ed25519-user.key")
+
+
+def test_serialize():
+    with pytest.raises(TypeError, match='Unsupported'):
+        sysca.serialize(object(), 'pem')
+    sk, cert = new_root(subject='CN=errtests')
+    with pytest.raises(ValueError, match="do not support"):
+        sysca.serialize(sk.public_key(), 'ssl')
+    with pytest.raises(ValueError, match="Unsupported"):
+        sysca.serialize(sk, 'x')
+    with pytest.raises(ValueError, match="private"):
+        sysca.serialize(cert, 'ssh')

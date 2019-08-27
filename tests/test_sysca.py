@@ -4,7 +4,9 @@ import pytest
 
 import sysca.api as sysca
 
-from helpers import demo_fn, demo_data, new_root, new_cert
+from sysca.files import autodetect_data, autodetect_filename, autodetect_file
+
+from helpers import demo_fn, demo_data, new_root
 
 
 def dump(obj):
@@ -182,18 +184,18 @@ def test_autodetect():
         ("password.txt", None),
     )
     for fn, t in ftypes:
-        assert sysca.autodetect_data(demo_data(fn)) == t
-        assert sysca.autodetect_filename(demo_fn(fn)) == t
-        assert sysca.autodetect_file(demo_fn(fn)) == t
+        assert autodetect_data(demo_data(fn)) == t
+        assert autodetect_filename(demo_fn(fn)) == t
+        assert autodetect_file(demo_fn(fn)) == t
 
-    assert sysca.autodetect_data(b'\x01\x02asdadsasdasd') is None
+    assert autodetect_data(b'\x01\x02asdadsasdasd') is None
 
-    other = (b"-----BEGIN GPG-----\n" +
-             b"113414241424\n" +
+    other = (b"-----BEGIN GPG-----\n"
+             b"113414241424\n"
              b"-----END GPG-----\n")
-    assert sysca.autodetect_data(other) is None
-    assert sysca.autodetect_data(other.replace(b"END ", b"END X ")) is None
-    assert sysca.autodetect_data(other.replace(b"END ", b"X ")) is None
+    assert autodetect_data(other) is None
+    assert autodetect_data(other.replace(b"END ", b"END X ")) is None
+    assert autodetect_data(other.replace(b"END ", b"X ")) is None
 
 
 SAMPLE_SET_SERIAL = """\
@@ -236,13 +238,13 @@ def test_parse_time_period():
     assert d2 - d1 < timedelta(days=310)
 
     d1, d2 = sysca.parse_time_period(not_valid_after="2200-01-01")
-    assert d2 - d1 > timedelta(days=15*365)
+    assert d2 - d1 > timedelta(days=15 * 365)
 
     d1, d2 = sysca.parse_time_period(not_valid_before="1989-01-01", not_valid_after="1995-01-01")
-    assert d2 - d1 > timedelta(days=5*365)
+    assert d2 - d1 > timedelta(days=5 * 365)
 
     d1, d2 = sysca.parse_time_period(not_valid_before=datetime(1989, 1, 1), not_valid_after=datetime(1995, 1, 1))
-    assert d2 - d1 > timedelta(days=5*365)
+    assert d2 - d1 > timedelta(days=5 * 365)
 
     with pytest.raises(ValueError, match="days"):
         sysca.parse_time_period(not_valid_before="2001-01-01")

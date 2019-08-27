@@ -11,6 +11,8 @@ __pycache__
 .tox
 .coverage
 .pybuild
+.cache
+*.whl
 dist
 MANIFEST
 build

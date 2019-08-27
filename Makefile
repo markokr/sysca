@@ -1,10 +1,11 @@
 
 all:
 	tox -e lint
-	tox -e py3-cryptography27
+	tox -e cio28
+	#tox -e py3-cryptography27
 
 test:
-	rm -rf cover
+	#rm -rf cover
 	tox -e lint
 	tox -e py3-cryptography21
 	tox -e py3-cryptography22

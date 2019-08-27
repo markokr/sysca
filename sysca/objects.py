@@ -5,29 +5,27 @@ import ipaddress
 
 from cryptography import x509
 from cryptography.x509.oid import ObjectIdentifier, NameOID, AuthorityInformationAccessOID
-from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.serialization import (
     Encoding, PrivateFormat, PublicFormat,
     BestAvailableEncryption, NoEncryption,
-    load_pem_private_key, load_der_private_key,
-    load_pem_public_key, load_der_public_key,
 )
 
-from .compat import PUBKEY_CLASSES, PRIVKEY_CLASSES, X509_CLASSES
+from .compat import (
+    PUBKEY_CLASSES, PRIVKEY_CLASSES, X509_CLASSES,
+)
 from .exceptions import InvalidCertificate
-from .files import load_gpg_file, is_pem_data
 from .formats import (
-    as_bytes, as_unicode,
+    as_unicode, as_password,
     parse_list, parse_dn,
     list_escape, render_name,
 )
+from .ssh import serialize_ssh_private_key, serialize_ssh_public_key
 
 __all__ = (
     "extract_name", "extract_gnames", "extract_policy",
     "extract_distribution_point_urls", "extract_auth_access",
     "make_policy", "make_name", "make_gnames", "make_key_usage",
     "serialize", "convert_urls_to_gnames",
-    "load_key", "load_pub_key", "load_req", "load_cert", "load_crl",
 )
 
 
@@ -232,57 +230,87 @@ def make_key_usage(digital_signature=False, content_commitment=False, key_enciph
                          encipher_only=encipher_only, decipher_only=decipher_only)
 
 
+# for non-key objects: CRT/CSR/CRL
+_X509_FORMATS = {
+    "der": Encoding.DER,
+    "pem": Encoding.PEM,
+}
+
+# public keys
+_PUB_FORMATS = {
+    "der": (Encoding.DER, PublicFormat.SubjectPublicKeyInfo),
+    "pem": (Encoding.PEM, PublicFormat.SubjectPublicKeyInfo),
+    "raw": (getattr(Encoding, "Raw", "raw"), getattr(PublicFormat, "Raw", "raw")),
+    "ssh": (Encoding.OpenSSH, PublicFormat.OpenSSH),
+    "ssl": (Encoding.PEM, PublicFormat.PKCS1),
+}
+
+# private keys
+_PRIV_FORMATS = {
+    "der": (Encoding.DER, PrivateFormat.PKCS8),
+    "pem": (Encoding.PEM, PrivateFormat.PKCS8),
+    "raw": (getattr(Encoding, "Raw", "raw"), getattr(PrivateFormat, "Raw", "raw")),
+    "ssh": (Encoding.PEM, "ssh"),
+    "ssl": (Encoding.PEM, PrivateFormat.TraditionalOpenSSL),
+}
+
+
 def serialize(obj, encoding="pem", password=None):
     """Returns standard serialization for object.
 
     Supports: certificate, certificate request, CRL, public and private keys.
 
-    Standard formats for all types:
-        pem - textual format
-        der - binary format
+    Formats for CRT/CSR/CRL:
+        pem - DER in ascii-armor
+        der - binary format, X.509 ASN1
 
-    Experimental formats for public and private keys:
-        ssh - compatible with openssh
-        raw - eddsa keys
+    Formats for public keys:
+        pem - X.509 SubjectPublicKeyInfo + PKCS1 + PEM
+        der - X.509 SubjectPublicKeyInfo + PKCS1
+        ssh - OpenSSH oneliner
+        ssl - Raw PKCS1 + PEM
+        raw - EdDSA public bytes
 
-    Returns string value for textual formats, bytes otherwise.
+    Formats for private keys:
+        pem - PKCS8 + PEM
+        der - PKCS8
+        ssh - OpenSSH custom format for private keys
+        ssl - Traditional OpenSSL/OpenSSH for RSA/DSA/EC keys
+        raw - EdDSA private bytes
+
+    Returns string value for textual formats (pem,ssh,ssl), bytes for binary formats (der,raw).
     """
-    ENCMAP = {"pem": Encoding.PEM, "der": Encoding.DER, "ssh": Encoding.OpenSSH}
-    if hasattr(Encoding, "Raw"):
-        ENCMAP["raw"] = getattr(Encoding, "Raw")
-    if encoding not in ENCMAP:
-        raise ValueError("Unsupported output format: %s" % encoding)
-
-    enc = ENCMAP[encoding]
+    password = as_password(password)
     res = None
+    if encoding not in ("pem", "der", "ssh", "ssl", "raw"):
+        raise ValueError("Unsupported encoding: %s" % encoding)
     if isinstance(obj, PRIVKEY_CLASSES):
-        fmt = PrivateFormat.PKCS8
-        hide = NoEncryption()
-        if encoding == "raw":
-            if password:
-                raise ValueError("Raw format does not support password")
-            fmt = getattr(PrivateFormat, "Raw")
-        elif password:
-            hide = BestAvailableEncryption(as_bytes(password))
         if encoding == "ssh":
-            enc = Encoding.PEM
-            fmt = PrivateFormat.TraditionalOpenSSL
-        res = obj.private_bytes(enc, fmt, hide)
+            res = serialize_ssh_private_key(obj, password)
+        else:
+            enc, fmt = _PRIV_FORMATS[encoding]
+            hide = NoEncryption()
+            if password:
+                if encoding == "raw":
+                    raise ValueError("Raw format does not support password")
+                hide = BestAvailableEncryption(password)
+            res = obj.private_bytes(enc, fmt, hide)
     elif password is not None:
         raise ValueError("Only private keys can have password protection")
     elif isinstance(obj, PUBKEY_CLASSES):
-        fmt = PublicFormat.SubjectPublicKeyInfo
         if encoding == "ssh":
-            fmt = PublicFormat.OpenSSH
-        elif encoding == "raw":
-            fmt = getattr(PublicFormat, "Raw")
-        res = obj.public_bytes(enc, fmt)
+            res = serialize_ssh_public_key(obj)
+        else:
+            enc, fmt = _PUB_FORMATS[encoding]
+            res = obj.public_bytes(enc, fmt)
     elif isinstance(obj, X509_CLASSES):
-        res = obj.public_bytes(enc)
+        if encoding not in _X509_FORMATS:
+            raise ValueError("Encoding %s is for public/private keys" % encoding)
+        res = obj.public_bytes(_X509_FORMATS[encoding])
     else:
-        raise TypeError("Unsupported type for serialize()")
+        raise TypeError("Unsupported type for serialize(): %r" % obj)
 
-    if enc in (Encoding.PEM, Encoding.OpenSSH):
+    if encoding in ("pem", "ssh", "ssl"):
         txt = res.decode("utf8")
         if txt[-1] != "\n":
             return txt + "\n"
@@ -335,50 +363,3 @@ def extract_auth_access(extobj):
     return issuer_urls, ocsp_urls
 
 
-def load_key(fn, psw=None):
-    """Read private key, decrypt if needed.
-    """
-    if psw:
-        psw = as_bytes(psw)
-    data = load_gpg_file(fn)
-    if is_pem_data(data):
-        key = load_pem_private_key(data, password=psw, backend=default_backend())
-    else:
-        key = load_der_private_key(data, password=psw, backend=default_backend())
-    return key
-
-
-def load_pub_key(fn):
-    """Read public key file.
-    """
-    data = open(fn, "rb").read()
-    if is_pem_data(data):
-        return load_pem_public_key(data, default_backend())
-    return load_der_public_key(data, default_backend())
-
-
-def load_req(fn):
-    """Read CSR file.
-    """
-    data = open(fn, "rb").read()
-    if is_pem_data(data):
-        return x509.load_pem_x509_csr(data, default_backend())
-    return x509.load_der_x509_csr(data, default_backend())
-
-
-def load_cert(fn):
-    """Read CRT file.
-    """
-    data = open(fn, "rb").read()
-    if is_pem_data(data):
-        return x509.load_pem_x509_certificate(data, default_backend())
-    return x509.load_der_x509_certificate(data, default_backend())
-
-
-def load_crl(fn):
-    """Read CRL file.
-    """
-    data = open(fn, "rb").read()
-    if is_pem_data(data):
-        return x509.load_pem_x509_crl(data, default_backend())
-    return x509.load_der_x509_crl(data, default_backend())

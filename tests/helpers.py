@@ -6,6 +6,7 @@ from sysca import api as sysca
 
 _FDIR = os.path.join(os.path.dirname(__file__), "files")
 
+
 def demo_fn(basename):
     return os.path.join(_FDIR, basename)
 
@@ -36,7 +37,6 @@ def new_root(ktype="ec", **kwargs):
 
 def new_cert(ca_key, ca_info, ktype="ec", **kwargs):
     key = sysca.new_key(ktype)
-    info = sysca.CertInfo(**kwargs)
+    info = sysca.CertInfo(load=key.public_key(), **kwargs)
     cert = sysca.create_x509_cert(ca_key, key.public_key(), info, ca_info, 365)
     return key, cert
-

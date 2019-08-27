@@ -280,7 +280,6 @@ class CertInfo:
         self.subject = extract_name(obj.subject)
 
         for ext in obj.extensions:
-            crit = ext.critical
             extobj = ext.value
             if ext.oid == ExtensionOID.BASIC_CONSTRAINTS:
                 self.ca = extobj.ca
@@ -544,11 +543,13 @@ def create_x509_req(privkey, subject_info):
                        backend=default_backend())
     return req
 
+
 def validate_issuer(issuer_info):
     if not issuer_info.ca:
         raise InvalidCertificate("Issuer must be CA.")
     if "key_cert_sign" not in issuer_info.usage:
         raise InvalidCertificate("Issuer CA is not allowed to sign certs.")
+
 
 def validate_subject_ca(subject_info, issuer_info):
     # not self-signing, check depth
@@ -560,6 +561,7 @@ def validate_subject_ca(subject_info, issuer_info):
         subject_info.path_length = issuer_info.path_length - 1
     elif issuer_info.path_length - 1 < subject_info.path_length:
         raise InvalidCertificate("--path-length not allowed by issuer")
+
 
 def create_x509_cert(issuer_privkey, subject_pubkey, subject_info, issuer_info,
                      days=None, serial_number=None,
@@ -627,4 +629,3 @@ def create_x509_cert(issuer_privkey, subject_pubkey, subject_info, issuer_info,
                         algorithm=get_hash_algo(issuer_privkey, "CRT"),
                         backend=default_backend())
     return cert
-

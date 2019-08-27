@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from .exceptions import InvalidCertificate
 
 __all__ = (
-    "as_bytes", "as_unicode",
+    "as_bytes", "as_unicode", "as_password",
     "maybe_parse_str", "maybe_parse",
     "parse_dn", "parse_list", "parse_number", "parse_timestamp",
     "parse_time_period",
@@ -31,6 +31,14 @@ def as_unicode(s, errs="strict"):
     if not isinstance(s, bytes):
         return s
     return s.decode("utf8", errs)
+
+
+def as_password(password):
+    if not password:
+        return None
+    if not isinstance(password, (bytes, bytearray, memoryview)):
+        password = password.encode("utf8")
+    return password
 
 
 def render_serial(snum):
