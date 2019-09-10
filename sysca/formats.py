@@ -6,7 +6,7 @@ import binascii
 from datetime import datetime, timedelta
 
 __all__ = (
-    "as_bytes", "as_unicode", "as_password",
+    "as_bytes", "as_password",
     "maybe_parse_str", "maybe_parse",
     "parse_dn", "parse_list", "parse_number", "parse_timestamp",
     "parse_time_period",
@@ -21,14 +21,6 @@ def as_bytes(s):
     if not isinstance(s, bytes):
         return s.encode("utf8")
     return s
-
-
-def as_unicode(s, errs="strict"):
-    """Return unicode-string.
-    """
-    if not isinstance(s, bytes):
-        return s
-    return s.decode("utf8", errs)
 
 
 def as_password(password):
@@ -168,7 +160,6 @@ def loop_escaped(val, c):
     """
     if not val:
         val = ""
-    val = as_unicode(val)
     rc = re.compile(r"([^%s\\]|\\.)*" % re.escape(c))
     pos = 0
     while pos < len(val):

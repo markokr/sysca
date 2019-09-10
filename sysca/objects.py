@@ -15,7 +15,7 @@ from .compat import (
 )
 from .exceptions import InvalidCertificate
 from .formats import (
-    as_unicode, as_password,
+    as_password,
     parse_list, parse_dn,
     list_escape, render_name,
 )
@@ -86,7 +86,7 @@ def extract_name(name):
                 pairs.append(name_oid2code_map[att.oid])
             else:
                 pairs.append(att.oid.dotted_string)
-            pairs.append(as_unicode(att.value))
+            pairs.append(att.value)
         rdns.append(tuple(pairs))
     return tuple(rdns)
 
@@ -102,11 +102,11 @@ def extract_gnames(ext_name_list):
     res = []
     for gn in ext_name_list:
         if isinstance(gn, x509.RFC822Name):
-            res.append("email:" + as_unicode(gn.value))
+            res.append("email:" + gn.value)
         elif isinstance(gn, x509.DNSName):
-            res.append("dns:" + as_unicode(gn.value))
+            res.append("dns:" + gn.value)
         elif isinstance(gn, x509.UniformResourceIdentifier):
-            res.append("uri:" + as_unicode(gn.value))
+            res.append("uri:" + gn.value)
         elif isinstance(gn, x509.IPAddress):
             if isinstance(gn.value, (ipaddress.IPv4Network, ipaddress.IPv6Network)):
                 res.append("net:" + str(gn.value))
@@ -190,7 +190,7 @@ def make_name(name_att_list):
                 oid = ObjectIdentifier(k)
             else:
                 oid = DN_CODE_TO_OID[k]
-            n = x509.NameAttribute(oid, as_unicode(v))
+            n = x509.NameAttribute(oid, v)
             attlist.append(n)
         rdnlist.append(x509.RelativeDistinguishedName(attlist))
     return x509.Name(rdnlist)
@@ -363,7 +363,7 @@ def extract_auth_access(extobj):
     for ad in extobj:
         if not isinstance(ad.access_location, x509.UniformResourceIdentifier):
             raise InvalidCertificate("Unsupported access_location: %s" % (ad.access_location,))
-        url = as_unicode(ad.access_location.value)
+        url = ad.access_location.value
 
         if ad.access_method == AuthorityInformationAccessOID.CA_ISSUERS:
             issuer_urls.append(url)
