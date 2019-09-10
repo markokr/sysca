@@ -40,7 +40,7 @@ def test_crl_delta():
     crlobj = sysca.create_x509_crl(ca_key, ca_cert, crlobj, 30)
 
     assert dump_crl(crlobj) == [
-        "Issuer Name: /CN=CrlCA/",
+        "Issuer Name: CN = CrlCA",
         "Authority Key Identifier: KeyID",
         "CRL Scope: all",
         "CRL Number: 02",
@@ -51,7 +51,7 @@ def test_crl_delta():
 
 
 def test_api_errors():
-    ca_key, ca_cert = new_root(subject="CN=CrlCA")
+    ca_key, ca_cert = new_root(subject="/CN=CrlCA/")
 
     crl = sysca.CRLInfo(crl_number=1)
     with pytest.raises(TypeError):
@@ -86,7 +86,7 @@ def test_crl_passthrough():
     lst2 = dump_crl(crl3)
     assert lst1 == lst2
     assert lst1 == [
-        "Issuer Name: /CN=CrlCA/",
+        "Issuer Name: CN = CrlCA",
         "Issuer SAN: dn:/CN=CaCrl/",
         "Authority Key Identifier: KeyID",
         "CRL Scope: all",
@@ -120,7 +120,7 @@ def test_direct_items():
     lst2 = dump_crl(crl2obj)
     assert lst1 == lst2
     assert lst1 == [
-        "Issuer Name: /CN=DirectCrlCA/",
+        "Issuer Name: CN = DirectCrlCA",
         "Authority Key Identifier: KeyID",
         "CRL Scope: all",
         "CRL Number: 0a",

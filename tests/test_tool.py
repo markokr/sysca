@@ -188,8 +188,8 @@ def test_sign_reset(capsys):
     assert info1.ca is True
     assert info2.ca is False
     assert info1.serial_number == 2 and info2.serial_number == 3
-    assert info1.subject == [("CN", "ecreq")]
-    assert info2.subject == [("CN", "override")]
+    assert info1.subject == (("CN", "ecreq"),)
+    assert info2.subject == (("CN", "override"),)
     assert "key_cert_sign" in info1.usage and "key_cert_sign" not in info2.usage
     assert "client" in info2.usage and "client" not in info1.usage
 

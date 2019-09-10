@@ -51,7 +51,7 @@ DN_CODE_TO_OID = {
     "XUID": NameOID.X500_UNIQUE_IDENTIFIER,
     "EMAIL": NameOID.EMAIL_ADDRESS,
     "SERIAL": NameOID.SERIAL_NUMBER,
-    "SA": NameOID.STREET_ADDRESS,       # multi
+    "STREET": NameOID.STREET_ADDRESS,   # multi
     "PA": NameOID.POSTAL_ADDRESS,       # multi
     "PC": NameOID.POSTAL_CODE,
 
@@ -63,7 +63,7 @@ DN_CODE_TO_OID = {
     "DC": NameOID.DOMAIN_COMPONENT,     # multi
 }
 
-DN_ALLOW_MULTIPLE = set(["STREET", "BC", "DC", "OU", "SA", "PA"])
+DN_ALLOW_MULTIPLE = set(["STREET", "BC", "DC", "OU", "STREET", "PA"])
 
 #
 # Converters
@@ -78,14 +78,17 @@ def extract_name(name):
     if not isinstance(name, x509.Name):
         raise TypeError("Expect x509.Name")
     name_oid2code_map = {v: k for k, v in DN_CODE_TO_OID.items()}
-    res = []
-    for att in name:
-        if att.oid not in name_oid2code_map:
-            raise InvalidCertificate("Unsupported RDN: %s" % (att,))
-        desc = name_oid2code_map[att.oid]
-        val = as_unicode(att.value)
-        res.append((desc, val))
-    return res
+    rdns = []
+    for rdn in name.rdns:
+        pairs = []
+        for att in rdn:
+            if att.oid in name_oid2code_map:
+                pairs.append(name_oid2code_map[att.oid])
+            else:
+                pairs.append(att.oid.dotted_string)
+            pairs.append(as_unicode(att.value))
+        rdns.append(tuple(pairs))
+    return tuple(rdns)
 
 
 def extract_gnames(ext_name_list):
@@ -111,7 +114,7 @@ def extract_gnames(ext_name_list):
                 res.append("ip:" + str(gn.value))
         elif isinstance(gn, x509.DirectoryName):
             val = extract_name(gn.value)
-            res.append("dn:" + render_name(val))
+            res.append("dn:" + render_name(val, "/"))
         else:
             raise InvalidCertificate("Unsupported subjectAltName type: %s" % (gn,))
     return res
@@ -151,7 +154,7 @@ def make_policy(txt):
     if len(tmp) > 1:
         quals = []
         for elem in parse_list(tmp[1]):
-            d = dict(parse_dn(elem, "|"))
+            d = dict(parse_dn(elem))
             klist = list(d.keys())
             if d.get("P"):
                 quals.append(d.get("P"))
@@ -174,15 +177,23 @@ def make_policy(txt):
 def make_name(name_att_list):
     """Create Name object from list of tuples.
     """
-    attlist = []
+
+    rdnlist = []
     got = set()
-    for k, v in name_att_list:
-        if k in got and k not in DN_ALLOW_MULTIPLE:
-            raise InvalidCertificate("Multiple Name keys not allowed: %s" % (k,))
-        oid = DN_CODE_TO_OID[k]
-        n = x509.NameAttribute(oid, as_unicode(v))
-        attlist.append(n)
-    return x509.Name(attlist)
+    for rdn in name_att_list:
+        attlist = []
+        while rdn:
+            k, v, rdn = rdn[0], rdn[1], rdn[2:]
+            if k in got and k not in DN_ALLOW_MULTIPLE:
+                raise InvalidCertificate("Multiple Name keys not allowed: %s" % (k,))
+            if '.' in k:
+                oid = ObjectIdentifier(k)
+            else:
+                oid = DN_CODE_TO_OID[k]
+            n = x509.NameAttribute(oid, as_unicode(v))
+            attlist.append(n)
+        rdnlist.append(x509.RelativeDistinguishedName(attlist))
+    return x509.Name(rdnlist)
 
 
 def make_gnames(gname_list):

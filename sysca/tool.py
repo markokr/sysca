@@ -330,7 +330,7 @@ def show_command_sysca(args):
             sys.stdout.write(serialize(obj, password=psw))
         else:
             die("bad format")
-    except Exception as ex:
+    except TypeError as ex:
         die("ERROR: %s: %s", fn, str(ex))
 
 

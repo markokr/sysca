@@ -1,5 +1,5 @@
 Public key: ec:secp256r1
-Subject: /CN=commonName/C=US/L=Locality/ST=State/O=org/OU=unit1of2/OU=unit2of2/SA=streetAddr_1of3/SA=Fooza 1\/2/SA=Läft 4\\b/PA=post1/PA=post2/BC=bzcat1/BC=bzcat2/DC=dom1/DC=dom2/SN=surname/GN=givenName/T=title/P=pseudo/GQ=genq/DQ=dnQ/UID=uid/XUID=x500uid/EMAIL=e@ma.il/SERIAL=xserial/PC=postCode/JC=US/JL=jLocal/JST=jState/
+Subject: CN = commonName, C = US, L = Locality, ST = State, O = org, OU = unit1of2, OU = unit2of2, STREET = streetAddr_1of3, STREET = Fooza 1/2, STREET = Läft 4\\b, PA = post1, PA = post2, BC = bzcat1, BC = bzcat2, DC = dom1, DC = dom2, SN = surname, GN = givenName, T = title, P = pseudo, GQ = genq, DQ = dnQ, UID = uid, XUID = x500uid, EMAIL = e@ma.il, SERIAL = xserial, PC = postCode, JC = US, JL = jLocal, JST = jState
 Subject Alternative Name:
   dns:*.example.com
   ip:127.0.0.1

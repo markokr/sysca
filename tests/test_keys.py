@@ -241,7 +241,7 @@ def test_serialize():
     with pytest.raises(TypeError, match='Unsupported'):
         sysca.serialize(object(), 'pem')
     sk, cert = new_root(subject='CN=errtests')
-    with pytest.raises(ValueError, match="do not support"):
+    with pytest.raises(ValueError, match="supported"):
         sysca.serialize(sk.public_key(), 'ssl')
     with pytest.raises(ValueError, match="Unsupported"):
         sysca.serialize(sk, 'x')

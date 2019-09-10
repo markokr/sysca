@@ -3,7 +3,7 @@ Public key: ec:secp256r1
 Not Valid Before: 1995-12-24 00:00:00
 Not Valid After: 2195-12-24 00:00:00
 Serial: ff
-Subject: /CN=commonName/C=US/L=Locality/ST=State/O=org/OU=unit1of2/OU=unit2of2/SA=streetAddr_1of3/SA=Fooza 1\/2/SA=Läft 4\\b/PA=post1/PA=post2/BC=bzcat1/BC=bzcat2/DC=dom1/DC=dom2/SN=surname/GN=givenName/T=title/P=pseudo/GQ=genq/DQ=dnQ/UID=uid/XUID=x500uid/EMAIL=e@ma.il/SERIAL=xserial/PC=postCode/JC=US/JL=jLocal/JST=jState/
+Subject: CN = commonName, C = US, L = Locality, ST = State, O = org, OU = unit1of2, OU = unit2of2, STREET = streetAddr_1of3, STREET = Fooza 1/2, STREET = Läft 4\\b, PA = post1, PA = post2, BC = bzcat1, BC = bzcat2, DC = dom1, DC = dom2, SN = surname, GN = givenName, T = title, P = pseudo, GQ = genq, DQ = dnQ, UID = uid, XUID = x500uid, EMAIL = e@ma.il, SERIAL = xserial, PC = postCode, JC = US, JL = jLocal, JST = jState
 Subject Alternative Name:
   dns:*.example.com
   ip:127.0.0.1
@@ -18,7 +18,7 @@ Path Length: 0
 Usage: digital_signature, content_commitment, key_encipherment, data_encipherment, key_agreement, key_cert_sign, crl_sign, client, server, code, email, time, ocsp, any
 Subject Key Identifier: 4a34eef58d6fb08aee79da087f7094b1886ec3c7
 Authority Key Identifier: 4a34eef58d6fb08aee79da087f7094b1886ec3c7
-Issuer Name: /CN=commonName/C=US/L=Locality/ST=State/O=org/OU=unit1of2/OU=unit2of2/SA=streetAddr_1of3/SA=Fooza 1\/2/SA=Läft 4\\b/PA=post1/PA=post2/BC=bzcat1/BC=bzcat2/DC=dom1/DC=dom2/SN=surname/GN=givenName/T=title/P=pseudo/GQ=genq/DQ=dnQ/UID=uid/XUID=x500uid/EMAIL=e@ma.il/SERIAL=xserial/PC=postCode/JC=US/JL=jLocal/JST=jState/
+Issuer Name: CN = commonName, C = US, L = Locality, ST = State, O = org, OU = unit1of2, OU = unit2of2, STREET = streetAddr_1of3, STREET = Fooza 1/2, STREET = Läft 4\\b, PA = post1, PA = post2, BC = bzcat1, BC = bzcat2, DC = dom1, DC = dom2, SN = surname, GN = givenName, T = title, P = pseudo, GQ = genq, DQ = dnQ, UID = uid, XUID = x500uid, EMAIL = e@ma.il, SERIAL = xserial, PC = postCode, JC = US, JL = jLocal, JST = jState
 Issuer SAN:
   dns:*.example.com
   ip:127.0.0.1

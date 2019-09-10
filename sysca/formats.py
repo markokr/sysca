@@ -5,8 +5,6 @@ import re
 import binascii
 from datetime import datetime, timedelta
 
-from .exceptions import InvalidCertificate
-
 __all__ = (
     "as_bytes", "as_unicode", "as_password",
     "maybe_parse_str", "maybe_parse",
@@ -87,11 +85,6 @@ def _escape_char(m):
     return "\\x%02x" % ord(c)
 
 
-def dn_escape(s, sep="/"):
-    """DistinguishedName backslash-escape"""
-    return re.sub(r"[\\%c\x00-\x1F]" % sep, _escape_char, s)
-
-
 def list_escape(s):
     """Escape value for comma-separated list
     """
@@ -138,15 +131,10 @@ def unescape(s):
     return re.sub(r"\\(x[0-9a-fA-F][0-9a-fA-F]|.)", _unescape_char, s)
 
 
-def render_name(name_att_list, sep="/"):
-    """Convert DistinguishedName dict to "/"-separated string.
+def render_name(name_att_list, sep=","):
+    """Convert DistinguishedName dict to "," or "/"-separated string.
     """
-    res = [""]
-    for k, v in name_att_list:
-        v = dn_escape(v, sep)
-        res.append("%s=%s" % (k, v))
-    res.append("")
-    return sep.join(res)
+    return ldap_to_string(name_att_list, sep)
 
 
 def maybe_parse(val, parse_func):
@@ -205,19 +193,10 @@ def parse_list(slist):
     return res
 
 
-def parse_dn(dnstr, sep="/"):
+def parse_dn(dnstr):
     """Parse openssl-style /-separated list to dict.
     """
-    res = []
-    for part in loop_escaped(dnstr, sep):
-        part = part.strip()
-        if not part:
-            continue
-        if "=" not in part:
-            raise InvalidCertificate("Need k=v in Name string")
-        k, v = part.split("=", 1)
-        res.append((k.strip(), v.strip()))
-    return tuple(res)
+    return ldap_from_string(dnstr)
 
 
 def to_issuer_gnames(subject, san):
@@ -225,7 +204,7 @@ def to_issuer_gnames(subject, san):
     """
     gnames = []
     if subject:
-        gnames.append("dn:" + render_name(subject))
+        gnames.append("dn:" + render_name(subject, "/"))
     if san:
         gnames.extend(san)
     return gnames
@@ -247,3 +226,119 @@ def parse_time_period(days=None, not_valid_before=None, not_valid_after=None, ga
     if not_valid_before > not_valid_after:
         raise ValueError("negative time range")
     return not_valid_before, not_valid_after
+
+
+#
+# LDAP string representation of Distinguished Names from RFC4514
+#
+
+_ldap_allow_sep = (",", "/", "|")
+_ldap_seg_rc = re.compile(r"""
+    [^\s#,+=\\/|]+ | \\[0-9a-fA-F][0-9a-fA-F] | \\. | .
+""", re.X)
+_ldap_escape_rc = re.compile(r"""\A[ #]|[ ]\Z|["+;<>\\=\x00-\x1F\x7F-\x9F]""")
+_ldap_unescape_rc = re.compile(r"(?:\\[0-9a-fA-F][0-9a-fA-F])+|\\.")
+
+
+def _ldap_escape_fn(m):
+    c = m.group()
+    if c < "\x20" or c >= "\x7F":
+        return "\\%02x" % ord(c)
+    return "\\" + c
+
+
+def _ldap_escape(s, sep):
+    s = _ldap_escape_rc.sub(_ldap_escape_fn, s)
+    if sep in s:
+        s = s.replace(sep, "\\" + sep)
+    return s
+
+
+def _ldap_unescape_fn(m):
+    s = m.group()
+    if len(s) > 2:
+        s = s.replace("\\", "")
+        return binascii.a2b_hex(s).decode("utf8")
+    return s[1]
+
+
+def _ldap_unescape(val):
+    # avoid eating escaped whitespace
+    while val and val[-1].isspace():
+        val.pop()
+    s = "".join(val).lstrip()
+    if s.startswith("#"):
+        raise ValueError("Hex octet representation not supported")
+    return _ldap_unescape_rc.sub(_ldap_unescape_fn, s)
+
+
+def ldap_to_string(mv_rdn, rdnsep=","):
+    """Render RDN list using format from RFC4514.
+    """
+    if rdnsep not in _ldap_allow_sep:
+        raise ValueError("Separator not supported")
+    space = " "
+    if rdnsep != ",":
+        space = ""
+    sep, mvsep, kvsep = "", space + "+" + space, space + "=" + space
+    res = []
+    for rdn in mv_rdn:
+        while rdn:
+            res.append(sep)
+            k, v, rdn, sep = rdn[0], rdn[1], rdn[2:], mvsep
+            res.append(_ldap_escape(k, rdnsep))
+            res.append(kvsep)
+            res.append(_ldap_escape(v, rdnsep))
+        sep = rdnsep + space
+    if rdnsep == ",":
+        return "".join(res)
+    return "%s%s%s" % (rdnsep, "".join(res), rdnsep)
+
+
+def ldap_from_string(val):
+    """Parse RDN list using format from RFC4514.
+    """
+    sep = ","
+    if val and val[0] in _ldap_allow_sep:
+        sep = val[0]
+
+    rdns = []
+    rdn = []
+    key = []
+    curTok = []
+
+    def flushpair():
+        k = _ldap_unescape(key)
+        v = _ldap_unescape(curTok)
+        if k:
+            if not v:
+                raise ValueError("Need non-empty value")
+            rdn.append(k)
+            rdn.append(v)
+            key.clear()
+            curTok.clear()
+        elif v:
+            raise ValueError("Need key before value")
+
+    for m in _ldap_seg_rc.finditer(val):
+        c = m.group()
+        if len(c) != 1:
+            curTok.append(c)
+        elif c == "=" and not key:
+            key = curTok
+            curTok = []
+            if not key:
+                raise ValueError("Need key before value")
+        elif c == sep:
+            flushpair()
+            if rdn:
+                rdns.append(tuple(rdn))
+                rdn = []
+        elif c == "+":
+            flushpair()
+        else:
+            curTok.append(c)
+    flushpair()
+    if rdn:
+        rdns.append(tuple(rdn))
+    return tuple(rdns)

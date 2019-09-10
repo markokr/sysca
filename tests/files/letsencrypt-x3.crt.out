@@ -3,13 +3,13 @@ Public key: rsa:2048
 Not Valid Before: 2016-03-17 16:40:46
 Not Valid After: 2021-03-17 16:40:46
 Serial: 0a:01:41:42:00:00:01:53:85:73:6a:0b:85:ec:a7:08
-Subject: /C=US/O=Let's Encrypt/CN=Let's Encrypt Authority X3/
+Subject: C = US, O = Let's Encrypt, CN = Let's Encrypt Authority X3
 CA: True
 Path Length: 0
 Usage: digital_signature, key_cert_sign, crl_sign
 Subject Key Identifier: a84a6a63047dddbae6d139b7a64565eff3a8eca1
 Authority Key Identifier: c4a7b1a47b2c71fadbe14b9075ffc41560858910
-Issuer Name: /O=Digital Signature Trust Co./CN=DST Root CA X3/
+Issuer Name: O = Digital Signature Trust Co., CN = DST Root CA X3
 Issuer URLs: http://apps.identrust.com/roots/dstrootcax3.p7c
 OCSP URLs: http://isrg.trustid.ocsp.identrust.com
 CRL URLs: http://crl.identrust.com/DSTROOTCAX3CRL.crl

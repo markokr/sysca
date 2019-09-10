@@ -52,20 +52,20 @@ def test_same_pubkey():
 
 def test_render_name():
     d = (("CN", "name"), ("O", "org"))
-    assert sysca.render_name(d) == "/CN=name/O=org/"
-    assert sysca.parse_dn(r" CN =name / / O = \x6frg ") == d
+    assert sysca.render_name(d, "/") == "/CN=name/O=org/"
+    assert sysca.parse_dn(r"/ CN =name / / O = \6Frg ") == d
 
     with pytest.raises(ValueError, match="Need"):
         sysca.parse_dn(r"/CN/")
 
     d += (("X", r"x\b/z"),)
-    w = sysca.render_name(d)
+    w = sysca.render_name(d, "/")
     assert w == "/CN=name/O=org/X=x\\\\b\\/z/"
     assert sysca.parse_dn(w) == d
 
     d = (("CN", "na,/\\"), ("O", "o\x00\x09"))
-    w = sysca.render_name(d)
-    assert w == r"/CN=na,\/\\/O=o\x00\x09/"
+    w = sysca.render_name(d, "/")
+    assert w == r"/CN=na,\/\\/O=o\00\09/"
 
 
 def test_passthrough():
@@ -88,7 +88,7 @@ def test_passthrough():
             "XUID": "XUID",
             "EMAIL": "e@mail",
             "SERIAL": "EV_SERIAL",
-            "SA": "StreetAddr",
+            "STREET": "StreetAddr",
             "PA": "PostalAddr",
             "PC": "PostalCode",
             "JC": "CA",
@@ -204,12 +204,12 @@ Public key: ec:secp256r1
 Not Valid Before: 2010-06-22 14:00:59
 Not Valid After: 2050-01-03 14:00:59
 Serial: 01:e2:40
-Subject: /CN=set/
+Subject: CN = set
 CA: True
 Usage: key_cert_sign, crl_sign
 Subject Key Identifier: 0d60f448426711c74637176e19ce725470431e5f
 Authority Key Identifier: 0d60f448426711c74637176e19ce725470431e5f
-Issuer Name: /CN=set/
+Issuer Name: CN = set
 """
 
 
