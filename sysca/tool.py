@@ -317,36 +317,36 @@ def show_command_sysca(args):
     def simple_write(ln):
         sys.stdout.write(ln + "\n")
     psw = load_password(args.password_file)
-    fn = args.file
-    obj = load_file_any(fn, password=psw)
-    try:
-        if isinstance(obj, (x509.Certificate, x509.CertificateSigningRequest)):
-            CertInfo(load=obj).show(simple_write)
-        elif isinstance(obj, x509.CertificateRevocationList):
-            CRLInfo(load=obj).show(simple_write)
-        elif isinstance(obj, PUBKEY_CLASSES):
-            sys.stdout.write(serialize(obj))
-        elif isinstance(obj, PRIVKEY_CLASSES):
-            sys.stdout.write(serialize(obj, password=psw))
-        else:
-            die("bad format")
-    except TypeError as ex:
-        die("ERROR: %s: %s", fn, str(ex))
+    for fn in args.file:
+        obj = load_file_any(fn, password=psw)
+        try:
+            if isinstance(obj, (x509.Certificate, x509.CertificateSigningRequest)):
+                CertInfo(load=obj).show(simple_write)
+            elif isinstance(obj, x509.CertificateRevocationList):
+                CRLInfo(load=obj).show(simple_write)
+            elif isinstance(obj, PUBKEY_CLASSES):
+                sys.stdout.write(serialize(obj))
+            elif isinstance(obj, PRIVKEY_CLASSES):
+                sys.stdout.write(serialize(obj, password=psw))
+            else:
+                die("bad format")
+        except TypeError as ex:
+            die("ERROR: %s: %s", fn, str(ex))
 
 
 def show_command_openssl(args):
     """Dump .crt and .csr files via openssl tool.
     """
-    fn = args.file
-    ext = os.path.splitext(fn)[1].lower()
-    if ext == ".csr":
-        run_openssl("req", fn)
-    elif ext == ".crt":
-        run_openssl("x509", fn)
-    elif ext == ".crl":
-        run_openssl("crl", fn)
-    else:
-        die("Unsupported file: %s", fn)
+    for fn in args.file:
+        ext = os.path.splitext(fn)[1].lower()
+        if ext == ".csr":
+            run_openssl("req", fn)
+        elif ext == ".crt":
+            run_openssl("x509", fn)
+        elif ext == ".crl":
+            run_openssl("crl", fn)
+        else:
+            die("Unsupported file: %s", fn)
 
 
 def show_command(args):
@@ -523,6 +523,10 @@ def opts_top(p):
 def opts_file(p):
     p.add_argument("file", help="A file to be read and exported")
 
+
+def opts_files(p):
+    p.add_argument("file", help="File(s) to show", nargs="+")
+
 #
 # collect per-command switches
 #
@@ -661,7 +665,7 @@ def setup_args_show(sub):
 
     opts_text(p)
 
-    opts_file(p)
+    opts_files(p)
     opts_password(p)
 
 
