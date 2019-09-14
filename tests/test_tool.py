@@ -81,12 +81,12 @@ def test_newkey_openssl(capsys):
 
 
 def test_list_curves(capsys):
-    assert sysca("list-curves") == 0
+    assert sysca("list", "ec-curves") == 0
     res = capsys.readouterr()
     assert "secp256r1" in res.out
     assert "secp192r1" not in res.out
 
-    assert sysca("--unsafe", "list-curves") == 0
+    assert sysca("--unsafe", "list", "ec-curves") == 0
     res = capsys.readouterr()
     assert "secp256r1" in res.out
     assert "secp192r1" in res.out

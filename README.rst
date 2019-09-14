@@ -489,10 +489,16 @@ show
 
 Display contents of CSR or CRT file.
 
-list-curves
-~~~~~~~~~~~
+list
+~~~~
 
-Show supported safe curves.  Needs ``--unsafe`` flag to show all supported curves.
+Output values for various parameters.
+
+**list ec-curves**
+    Show supported safe curves.  Needs ``--unsafe`` flag to show all supported curves.
+
+**list name-fields**
+    Show keywords usable in name fields.
 
 export
 ~~~~~~

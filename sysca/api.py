@@ -23,12 +23,13 @@ from .keys import (
     valid_privkey, valid_pubkey, same_pubkey, set_unsafe,
     new_ec_key, new_rsa_key, new_dsa_key, new_key,
 )
-from .objects import serialize
+from .objects import serialize, DN_OID_TO_CODE, DN_CODE_TO_OID
 from .compat import PUBKEY_CLASSES, PRIVKEY_CLASSES
 from .ssh import load_ssh_private_key, load_ssh_public_key
 
 __all__ = (
     "FULL_VERSION", "CRL_REASON", "PUBKEY_CLASSES", "PRIVKEY_CLASSES",
+    "DN_CODE_TO_OID", "DN_OID_TO_CODE",
     "CertInfo", "CRLInfo", "RevCertInfo",
     "create_x509_req", "create_x509_cert", "create_x509_crl",
     "InvalidCertificate", "UnsupportedParameter",

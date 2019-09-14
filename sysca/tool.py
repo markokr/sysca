@@ -12,6 +12,7 @@ from cryptography import x509
 
 from .api import (
     FULL_VERSION, PUBKEY_CLASSES, PRIVKEY_CLASSES, CRL_REASON,
+    DN_CODE_TO_OID,
     CertInfo, CRLInfo,
     create_x509_cert, create_x509_req, create_x509_crl,
     get_ec_curves, new_key, same_pubkey, get_key_name,
@@ -382,8 +383,25 @@ def export_pub_command(args):
         die("no public key")
 
 
-def list_curves_command(args):
-    print("%s" % "\n".join(get_ec_curves()))
+def list_name_fields():
+    oids = {}
+    for k, v in DN_CODE_TO_OID.items():
+        oids.setdefault(v, []).append(k)
+    lines = []
+    for names in oids.values():
+        if len(names) == 1:
+            lines.append("\t" + names[0])
+        else:
+            lines.append("\t".join(sorted(names)))
+    lines.sort(key=lambda ln: ln.strip())
+    print("%s" % "\n".join(lines))
+
+
+def list_command(args):
+    if args.what == "ec-curves":
+        print("%s" % "\n".join(get_ec_curves()))
+    elif args.what == "name-fields":
+        list_name_fields()
 
 
 #
@@ -669,11 +687,13 @@ def setup_args_show(sub):
     opts_password(p)
 
 
-def setup_args_list_curves(sub):
-    """Show available EC curves
+def setup_args_list(sub):
+    """Show available parameters
     """
-    p = sub.add_parser("list-curves", **loadhelp(setup_args_list_curves))
-    p.set_defaults(command=list_curves_command)
+    whats = ("ec-curves", "name-fields")
+    p = sub.add_parser("list", **loadhelp(setup_args_list))
+    p.add_argument("what", help="What parameter to show", choices=whats)
+    p.set_defaults(command=list_command)
 
 #
 # top-level parser
@@ -702,7 +722,7 @@ def setup_args():
     setup_args_show(sub)
     setup_args_export(sub)
     setup_args_export_pub(sub)
-    setup_args_list_curves(sub)
+    setup_args_list(sub)
     return top
 
 
