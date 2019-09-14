@@ -30,40 +30,84 @@ __all__ = (
 
 
 DN_CODE_TO_OID = {
+    # common
     "CN": NameOID.COMMON_NAME,
-
+    "commonName": NameOID.COMMON_NAME,
     "O": NameOID.ORGANIZATION_NAME,
-    "OU": NameOID.ORGANIZATIONAL_UNIT_NAME,     # multi
-
+    "organizationName": NameOID.ORGANIZATION_NAME,
+    "OU": NameOID.ORGANIZATIONAL_UNIT_NAME,
+    "organizationalUnitName": NameOID.ORGANIZATIONAL_UNIT_NAME,
     "C": NameOID.COUNTRY_NAME,
+    "countryName": NameOID.COUNTRY_NAME,
     "L": NameOID.LOCALITY_NAME,
+    "localityName": NameOID.LOCALITY_NAME,
     "ST": NameOID.STATE_OR_PROVINCE_NAME,
+    "stateOrProvinceName": NameOID.STATE_OR_PROVINCE_NAME,
+    "STREET": NameOID.STREET_ADDRESS,
+    "streetAddress": NameOID.STREET_ADDRESS,
 
+    # X.520 name
     "SN": NameOID.SURNAME,
+    "surname": NameOID.SURNAME,
     "GN": NameOID.GIVEN_NAME,
-    "T": NameOID.TITLE,
-    "P": NameOID.PSEUDONYM,
-
+    "givenName": NameOID.GIVEN_NAME,
     "GQ": NameOID.GENERATION_QUALIFIER,
+    "generationQualifier": NameOID.GENERATION_QUALIFIER,
+    "P": NameOID.PSEUDONYM,
+    "pseudonym": NameOID.PSEUDONYM,
+    "T": NameOID.TITLE,
+    "title": NameOID.TITLE,
+
+    # LDAP/X.500 (rfc4519)
+    "BC": NameOID.BUSINESS_CATEGORY,
+    "businessCategory": NameOID.BUSINESS_CATEGORY,
+    "DC": NameOID.DOMAIN_COMPONENT,
+    "domainComponent": NameOID.DOMAIN_COMPONENT,
     "DQ": NameOID.DN_QUALIFIER,
+    "dnQualifier": NameOID.DN_QUALIFIER,
+    "PA": NameOID.POSTAL_ADDRESS,
+    "postalAddress": NameOID.POSTAL_ADDRESS,
+    "PC": NameOID.POSTAL_CODE,
+    "postalCode": NameOID.POSTAL_CODE,
+    "SERIAL": NameOID.SERIAL_NUMBER,
+    "serialNumber": NameOID.SERIAL_NUMBER,
 
     "UID": NameOID.USER_ID,
+    "userid": NameOID.USER_ID,
     "XUID": NameOID.X500_UNIQUE_IDENTIFIER,
+    "x500UniqueIdentifier": NameOID.X500_UNIQUE_IDENTIFIER,
+
+    # nonstring: name, member, owner, roleOccupant, seeAlso, uniqueMember
+    # weird: telex*, teletex*, userPassword
+    "description": ObjectIdentifier("2.5.4.13"),
+    "destinationIndicator": ObjectIdentifier("2.5.4.27"),
+    "enhancedSearchGuide": ObjectIdentifier("2.5.4.47"),
+    "facsimileTelephoneNumber": ObjectIdentifier("2.5.4.23"),
+    "houseIdentifier": ObjectIdentifier("2.5.4.51"),
+    "initials": ObjectIdentifier("2.5.4.43"),
+    "internationalISDNNumber": ObjectIdentifier("2.5.4.25"),
+    "physicalDeliveryOfficeName": ObjectIdentifier("2.5.4.19"),
+    "postOfficeBox": ObjectIdentifier("2.5.4.18"),
+    "preferredDeliveryMethod": ObjectIdentifier("2.5.4.28"),
+    "registeredAddress": ObjectIdentifier("2.5.4.26"),
+    "searchGuide": ObjectIdentifier("2.5.4.14"),
+    "telephoneNumber": ObjectIdentifier("2.5.4.20"),
+
+    # used in RSA PKCS#9, replaced by SAN
     "EMAIL": NameOID.EMAIL_ADDRESS,
-    "SERIAL": NameOID.SERIAL_NUMBER,
-    "STREET": NameOID.STREET_ADDRESS,   # multi
-    "PA": NameOID.POSTAL_ADDRESS,       # multi
-    "PC": NameOID.POSTAL_CODE,
+    "emailAddress": NameOID.EMAIL_ADDRESS,
 
+    # used in Extended Validation Certificates
     "JC": NameOID.JURISDICTION_COUNTRY_NAME,
+    "jurisdictionOfIncorporationCountryName": NameOID.JURISDICTION_COUNTRY_NAME,
     "JL": NameOID.JURISDICTION_LOCALITY_NAME,
+    "jurisdictionOfIncorporationLocalityName": NameOID.JURISDICTION_LOCALITY_NAME,
     "JST": NameOID.JURISDICTION_STATE_OR_PROVINCE_NAME,
-
-    "BC": NameOID.BUSINESS_CATEGORY,    # multi
-    "DC": NameOID.DOMAIN_COMPONENT,     # multi
+    "jurisdictionOfIncorporationStateOrProvinceName": NameOID.JURISDICTION_STATE_OR_PROVINCE_NAME,
 }
 
-DN_ALLOW_MULTIPLE = set(["STREET", "BC", "DC", "OU", "STREET", "PA"])
+DN_OID_TO_CODE = {v: k for k, v in sorted(DN_CODE_TO_OID.items(), reverse=True)}
+
 
 #
 # Converters
@@ -77,15 +121,12 @@ def extract_name(name):
         return None
     if not isinstance(name, x509.Name):
         raise TypeError("Expect x509.Name")
-    name_oid2code_map = {v: k for k, v in DN_CODE_TO_OID.items()}
     rdns = []
     for rdn in name.rdns:
         pairs = []
         for att in rdn:
-            if att.oid in name_oid2code_map:
-                pairs.append(name_oid2code_map[att.oid])
-            else:
-                pairs.append(att.oid.dotted_string)
+            name = DN_OID_TO_CODE.get(att.oid, att.oid.dotted_string)
+            pairs.append(name)
             pairs.append(att.value)
         rdns.append(tuple(pairs))
     return tuple(rdns)
@@ -179,17 +220,16 @@ def make_name(name_att_list):
     """
 
     rdnlist = []
-    got = set()
     for rdn in name_att_list:
         attlist = []
         while rdn:
             k, v, rdn = rdn[0], rdn[1], rdn[2:]
-            if k in got and k not in DN_ALLOW_MULTIPLE:
-                raise InvalidCertificate("Multiple Name keys not allowed: %s" % (k,))
-            if '.' in k:
+            if "." in k:
                 oid = ObjectIdentifier(k)
-            else:
+            elif k in DN_CODE_TO_OID:
                 oid = DN_CODE_TO_OID[k]
+            else:
+                raise InvalidCertificate("Unknown Name tag: %s" % (k,))
             n = x509.NameAttribute(oid, v)
             attlist.append(n)
         rdnlist.append(x509.RelativeDistinguishedName(attlist))
