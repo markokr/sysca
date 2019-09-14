@@ -19,6 +19,7 @@ from .formats import (
 from .keys import (
     get_hash_algo, get_key_name, valid_privkey, valid_pubkey,
     new_serial_number, same_pubkey,
+    get_invalid_key_usage,
 )
 from .objects import (
     convert_urls_to_gnames,
@@ -346,7 +347,7 @@ class CertInfo:
             tls_features.append(x509.TLSFeatureType.status_request_v2)
         return tls_features
 
-    def install_extensions(self, builder):
+    def install_extensions(self, builder, subject_pubkey, issuer_pubkey, issuer_san):
         """Add common extensions to Cert- or CSR builder.
         """
         if self.unknown_extensions:
@@ -361,7 +362,7 @@ class CertInfo:
         builder = builder.add_extension(ext, critical=True)
 
         # KeyUsage, critical
-        ku_args = {k: k in self.usage for k in KU_FIELDS}
+        ku_args = {k: True in self.usage for k in KU_FIELDS}
         if self.ca:
             ku_args.update(CA_DEFAULTS)
         elif not self.usage:
@@ -370,6 +371,9 @@ class CertInfo:
             if k in self.usage:
                 for k2 in XKU_DEFAULTS[k]:
                     ku_args[k2] = True
+        invalid_usage = [k for k in get_invalid_key_usage(subject_pubkey) if ku_args.get(k)]
+        if invalid_usage:
+            raise InvalidCertificate("Key type does not support usage: %s" % ",".join(invalid_usage))
         ext = make_key_usage(**ku_args)
         builder = builder.add_extension(ext, critical=True)
 
@@ -395,6 +399,21 @@ class CertInfo:
         # SubjectAlternativeName
         if self.san:
             ext = x509.SubjectAlternativeName(make_gnames(self.san))
+            builder = builder.add_extension(ext, critical=False)
+
+        # SubjectKeyIdentifier
+        if subject_pubkey is not None:
+            ext = x509.SubjectKeyIdentifier.from_public_key(subject_pubkey)
+            builder = builder.add_extension(ext, critical=False)
+
+        # IssuerAlternativeName
+        if issuer_san:
+            ext = x509.IssuerAlternativeName(make_gnames(issuer_san))
+            builder = builder.add_extension(ext, critical=False)
+
+        # AuthorityKeyIdentifier
+        if issuer_pubkey is not None:
+            ext = x509.AuthorityKeyIdentifier.from_issuer_public_key(issuer_pubkey)
             builder = builder.add_extension(ext, critical=False)
 
         # CRLDistributionPoints
@@ -535,7 +554,7 @@ def create_x509_req(privkey, subject_info):
 
     builder = x509.CertificateSigningRequestBuilder()
     builder = builder.subject_name(make_name(subject_info.subject))
-    builder = subject_info.install_extensions(builder)
+    builder = subject_info.install_extensions(builder, privkey.public_key(), None, None)
 
     # create final request
     req = builder.sign(private_key=privkey,
@@ -609,20 +628,9 @@ def create_x509_cert(issuer_privkey, subject_pubkey, subject_info, issuer_info,
                .serial_number(serial_number)
                .public_key(subject_pubkey))
 
-    builder = subject_info.install_extensions(builder)
-
-    # SubjectKeyIdentifier
-    ext = x509.SubjectKeyIdentifier.from_public_key(subject_pubkey)
-    builder = builder.add_extension(ext, critical=False)
-
-    # AuthorityKeyIdentifier
-    ext = x509.AuthorityKeyIdentifier.from_issuer_public_key(issuer_privkey.public_key())
-    builder = builder.add_extension(ext, critical=False)
-
-    # IssuerAlternativeName
-    if issuer_info.san:
-        ext = x509.IssuerAlternativeName(make_gnames(issuer_info.san))
-        builder = builder.add_extension(ext, critical=False)
+    builder = subject_info.install_extensions(
+        builder, subject_pubkey, issuer_privkey.public_key(), issuer_info.san
+    )
 
     # final cert
     cert = builder.sign(private_key=issuer_privkey,

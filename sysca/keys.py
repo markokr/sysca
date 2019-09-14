@@ -19,7 +19,7 @@ __all__ = (
     "is_safe_bits", "is_safe_curve",
     "new_dsa_key", "new_ec_key", "new_key", "new_rsa_key",
     "new_serial_number", "same_pubkey", "set_unsafe",
-    "valid_privkey", "valid_pubkey",
+    "valid_privkey", "valid_pubkey", "get_invalid_key_usage",
 )
 
 
@@ -77,6 +77,15 @@ def get_hash_algo(privkey, ctx):
         if privkey.key_size > 300:
             return SHA384()
     return SHA256()
+
+
+def get_invalid_key_usage(pubkey):
+    """KeyUsage types not supported by key"""
+    bad = ("key_encipherment", "data_encipherment", "encipher_only", "decipher_only", "key_agreement")
+
+    if UNSAFE or isinstance(pubkey, rsa.RSAPublicKey) or pubkey is None:
+        return ()
+    return bad
 
 
 def is_safe_bits(bits, bitlist):

@@ -69,7 +69,7 @@ def test_render_name():
 
 
 def test_passthrough():
-    key = sysca.new_ec_key()
+    key = sysca.new_rsa_key()
     info = sysca.CertInfo(
         subject={
             "CN": "Passing",
@@ -158,7 +158,9 @@ def test_passthrough():
     lst2 = []
     info.show(lst1.append)
     info2.show(lst2.append)
-    lst2.remove("Public key: ec:secp256r1")
+    lst2 = [ln for ln in lst2 if not (
+        ln.startswith("Public key:") or ln.startswith("Subject Key Identifier:")
+    )]
     assert lst1 == lst2
 
 
