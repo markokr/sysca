@@ -150,7 +150,7 @@ def ssh_kformat(prefix, password, tmp_key):
     assert pktxt2 == pktxt[:len(pktxt2)]
 
     # serialize ssh public key
-    pktxt3 = sysca.serialize(sk.public_key(), 'ssh').encode('ascii').strip()
+    pktxt3 = sysca.serialize(sk.public_key(), "ssh").encode("ascii").strip()
     assert pktxt2 == pktxt3
 
     # load ssh public key
@@ -159,15 +159,15 @@ def ssh_kformat(prefix, password, tmp_key):
     assert pkloadtxt == pktxt2
 
     # serialize ssh private key, try test autodetection
-    skpem = sysca.serialize(sk, 'ssh', password)
+    skpem = sysca.serialize(sk, "ssh", password)
     with open(tmp_key, "w") as f:
         f.write(skpem)
     sk2 = sysca.load_file_any(tmp_key, password)
     pktxt4 = sk2.public_key().public_bytes(Encoding.OpenSSH, PublicFormat.OpenSSH)
     assert pktxt4 == pktxt2
 
-    if 'ed25519' not in prefix:
-        ssl_priv_pem = sysca.serialize(sk, 'ssl', password)
+    if "ed25519" not in prefix:
+        ssl_priv_pem = sysca.serialize(sk, "ssl", password)
         with open(tmp_key, "w") as f:
             f.write(ssl_priv_pem)
         ssl_sk = sysca.load_file_any(tmp_key, password)
@@ -176,13 +176,13 @@ def ssh_kformat(prefix, password, tmp_key):
     else:
         if password:
             with pytest.raises(ValueError):
-                sysca.serialize(sk, 'raw', password)
+                sysca.serialize(sk, "raw", password)
             with pytest.raises(ValueError):
-                sysca.serialize(sk.public_key(), 'raw', password)
+                sysca.serialize(sk.public_key(), "raw", password)
         else:
-            raw1 = sysca.serialize(sk, 'raw', password)
+            raw1 = sysca.serialize(sk, "raw", password)
             assert len(raw1) == 32
-            raw2 = sysca.serialize(sk.public_key(), 'raw', password)
+            raw2 = sysca.serialize(sk.public_key(), "raw", password)
             assert len(raw2) == 32
 
 
@@ -238,12 +238,12 @@ def test_ssh_certs_eddsa(tmp_path):
 
 
 def test_serialize():
-    with pytest.raises(TypeError, match='Unsupported'):
-        sysca.serialize(object(), 'pem')
-    sk, cert = new_root(subject='CN=errtests')
-    with pytest.raises(ValueError, match="supported"):
-        sysca.serialize(sk.public_key(), 'ssl')
+    with pytest.raises(TypeError, match="Unsupported"):
+        sysca.serialize(object(), "pem")
+    sk, cert = new_root(subject="CN=errtests")
+    with pytest.raises(ValueError, match="support"):
+        sysca.serialize(sk.public_key(), "ssl")
     with pytest.raises(ValueError, match="Unsupported"):
-        sysca.serialize(sk, 'x')
+        sysca.serialize(sk, "x")
     with pytest.raises(ValueError, match="private"):
-        sysca.serialize(cert, 'ssh')
+        sysca.serialize(cert, "ssh")

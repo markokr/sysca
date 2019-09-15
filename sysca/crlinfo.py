@@ -407,4 +407,3 @@ def create_x509_crl(issuer_privkey, issuer_info, crl_info, days=None,
                        algorithm=get_hash_algo(issuer_privkey, "CRL"),
                        backend=default_backend())
     return crl
-

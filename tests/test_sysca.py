@@ -190,7 +190,7 @@ def test_autodetect():
         assert autodetect_filename(demo_fn(fn)) == t
         assert autodetect_file(demo_fn(fn)) == t
 
-    assert autodetect_data(b'\x01\x02asdadsasdasd') is None
+    assert autodetect_data(b"\x01\x02asdadsasdasd") is None
 
     other = (b"-----BEGIN GPG-----\n"
              b"113414241424\n"

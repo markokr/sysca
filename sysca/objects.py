@@ -412,5 +412,3 @@ def extract_auth_access(extobj):
         else:
             raise InvalidCertificate("Unsupported access_method: %s" % (ad.access_method,))
     return issuer_urls, ocsp_urls
-
-
