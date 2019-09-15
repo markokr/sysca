@@ -1,5 +1,6 @@
 include tests/files/*
+include tests/files/ssh/*
+include tests/files/ssh-ca/*
 include tests/*.py
-include tests/cli/*.sh
 include tox.ini .pylintrc local.py
 include MANIFEST.in LICENSE.txt README.rst CHANGES.rst

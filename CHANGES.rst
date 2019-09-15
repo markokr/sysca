@@ -4,11 +4,19 @@ Version history
 dev
 ---
 
+Nothing yet.
+
+2.0
+---
+
 * [feature] ``export`` command to change file format.  Useful for keys.
 * [feature] ``export-pub`` command to extract public key
   from certificate or private key.
+* [feature] ``list ec-curves``  and ``list name-fields`` commands.
 * [feature] Support DER output format.
-* [cleanup] Split code into submodules.
+* [feature] Support OpenSSH private key format.
+* [feature] Support LDAP name syntax.
+* [api] Split code into submodules.  API compatibility is not kept.
 
 1.4
 ---

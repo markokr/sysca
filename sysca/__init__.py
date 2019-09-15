@@ -1,7 +1,7 @@
 """SysCA - Certificate tool for sysadmins.
 """
 
-__version__ = "1.5"
+__version__ = "2.0"
 
 
 def _version_info():
