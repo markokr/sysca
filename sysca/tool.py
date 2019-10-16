@@ -744,11 +744,12 @@ def run_sysca(argv):
 def main():
     """Command-line application entry point.
     """
-    return run_sysca(sys.argv[1:])
+    try:
+        return run_sysca(sys.argv[1:])
+    except (BrokenPipeError, KeyboardInterrupt):
+        sys.exit(1)
 
 
 if __name__ == "__main__":
-    try:
-        main()
-    except (BrokenPipeError, KeyboardInterrupt):
-        sys.exit(1)
+    main()
+
