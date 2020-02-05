@@ -1,6 +1,8 @@
 """SysCA - Certificate tool for sysadmins.
 """
 
+# pylint: disable=import-outside-toplevel
+
 __version__ = "2.0"
 
 

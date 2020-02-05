@@ -1,6 +1,8 @@
 """Compatibility between various cryptography versions.
 """
 
+# pylint: disable=import-outside-toplevel
+
 from cryptography import x509
 from cryptography.x509.oid import SignatureAlgorithmOID, ExtensionOID
 from cryptography.hazmat.primitives.asymmetric import ec, rsa, dsa

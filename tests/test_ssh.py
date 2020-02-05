@@ -164,9 +164,9 @@ class TestOpenSSHSerialization(object):
         maxline = max(map(len, priv_data2.split(b"\n")))
         assert maxline < 80
 
-    @pytest.mark.supported(
-        only_if=lambda backend: bool(bcrypt),
-        skip_message="Requires that bcrypt exists"
+    @pytest.mark.skipif(
+        not bool(bcrypt),
+        reason="Requires that bcrypt exists"
     )
     def test_bcrypt_encryption(self):
         private_key = ec.generate_private_key(ec.SECP256R1(), backend)
