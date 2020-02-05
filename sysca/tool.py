@@ -5,23 +5,18 @@ import argparse
 import os.path
 import subprocess
 import sys
-
 from datetime import datetime
 
 from cryptography import x509
 
 from .api import (
-    FULL_VERSION, PUBKEY_CLASSES, PRIVKEY_CLASSES, CRL_REASON,
-    DN_CODE_TO_OID,
-    CertInfo, CRLInfo,
-    create_x509_cert, create_x509_req, create_x509_crl,
-    get_ec_curves, new_key, same_pubkey, get_key_name,
-    serialize, load_key, load_req, load_cert, load_crl,
-    load_password, load_file_any, set_unsafe,
-    parse_list, render_name, render_serial, as_bytes,
-    parse_number, parse_dn, to_issuer_gnames,
+    CRL_REASON, DN_CODE_TO_OID, FULL_VERSION, PRIVKEY_CLASSES, PUBKEY_CLASSES,
+    CertInfo, CRLInfo, as_bytes, autogen_config_file, create_x509_cert,
+    create_x509_crl, create_x509_req, get_ec_curves, get_key_name, load_cert,
+    load_crl, load_file_any, load_key, load_password, load_req, new_key,
+    parse_dn, parse_list, parse_number, render_name, render_serial,
+    same_pubkey, serialize, set_unsafe, to_issuer_gnames,
 )
-
 
 __all__ = ("main", "run_sysca")
 
@@ -404,9 +399,60 @@ def list_command(args):
         list_name_fields()
 
 
+def safe_write(fn, data):
+    with open(fn, "wb", buffering=0) as f:
+        f.write(data)
+
+
+def autogen_command(args):
+    def load_ca_keypair(ca_name):
+        matches = []
+        pfx = ca_name + '_'
+        for fn in sorted(os.listdir(args.ca_dir)):
+            if not fn.startswith(pfx):
+                continue
+            keyfn = os.path.join(args.ca_dir, fn)
+            if fn.endswith('.key.gpg'):
+                certfn = keyfn[:-8] + '.crt'
+            elif fn.endswith('.key'):
+                certfn = keyfn[:-4] + '.crt'
+            else:
+                continue
+            matches.append((keyfn, certfn))
+        return matches[0]
+
+    class CertArgs:
+        out = None
+        outform = args.outform
+        text = args.text
+    cert_args = CertArgs()
+
+    class KeyArgs:
+        out = None
+        outform = 'pem'
+        text = False
+    key_args = KeyArgs()
+
+    defs = {}
+    for fn in args.file:
+        msg("Processing %s", fn)
+        res = autogen_config_file(fn, load_ca_keypair, defs)
+        for basefn, vals in res.items():
+            key_obj = vals[0]
+            cert_obj = vals[1]
+            if args.out_dir:
+                basefn = os.path.join(args.out_dir, basefn)
+            key_args.out = basefn + ".key"
+            cert_args.out = basefn + ".crt"
+
+            do_output(key_obj, key_args)
+            do_output(cert_obj, cert_args)
+            msg("  %s", key_args.out)
+
 #
 # argparse setup
 #
+
 
 def opts_password(p):
     p.add_argument("--password-file", metavar="FN", help="File to load password from")
@@ -695,6 +741,28 @@ def setup_args_list(sub):
     p.add_argument("what", help="What parameter to show", choices=whats)
     p.set_defaults(command=list_command)
 
+
+def setup_args_autogen(sub):
+    """Generate key and certificate.
+    """
+    p = sub.add_parser("autogen", **loadhelp(setup_args_autogen))
+    p.set_defaults(command=autogen_command)
+
+    g = p.add_argument_group("Signing")
+    g.add_argument("--ca-dir", required=True,
+                   help="Select output format: PEM|DER.  Default: PEM")
+    opts_password(g)
+
+    g = p.add_argument_group("Output")
+    g.add_argument("--out-dir", metavar="OUTDIR",
+                   help="File to write output to, instead stdout")
+    g.add_argument("--outform", default="PEM",
+                   help="Select output format: PEM|DER.  Default: PEM")
+    opts_text(g)
+
+    p.add_argument("file", help="Config file(s) to process", nargs="+")
+
+
 #
 # top-level parser
 #
@@ -723,6 +791,7 @@ def setup_args():
     setup_args_export(sub)
     setup_args_export_pub(sub)
     setup_args_list(sub)
+    setup_args_autogen(sub)
     return top
 
 

@@ -61,3 +61,12 @@ sysca sign \
 sysca show ec2-rich.csr > ec2-rich.csr.out
 sysca show ec2-rich.crt > ec2-rich.crt.out
 
+
+sysca new-key --out autogen_ca/CA1_2020.key
+sysca new-key --out autogen_ca/CA2_2020.key
+sysca new-key --out autogen_ca/CA3_2020.key
+
+sysca selfsign --key autogen_ca/CA1_2020.key --days 15000 --CA --subject '/CN=CA1/' --out autogen_ca/CA1_2020.crt
+sysca selfsign --key autogen_ca/CA2_2020.key --days 15000 --CA --subject '/CN=CA2/' --out autogen_ca/CA2_2020.crt
+sysca selfsign --key autogen_ca/CA3_2020.key --days 15000 --CA --subject '/CN=CA3/' --out autogen_ca/CA3_2020.crt
+

@@ -26,6 +26,8 @@ from .keys import (
 from .objects import serialize, DN_OID_TO_CODE, DN_CODE_TO_OID
 from .compat import PUBKEY_CLASSES, PRIVKEY_CLASSES
 from .ssh import load_ssh_private_key, load_ssh_public_key
+from .autogen import autogen_config_file
+
 
 __all__ = (
     "FULL_VERSION", "CRL_REASON", "PUBKEY_CLASSES", "PRIVKEY_CLASSES",
@@ -44,4 +46,5 @@ __all__ = (
     "load_key", "load_cert", "load_req", "load_crl", "load_pub_key",
     "serialize", "load_file_any",
     "as_bytes", "to_issuer_gnames",
+    "autogen_config_file",
 )

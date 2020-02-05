@@ -1,5 +1,6 @@
 
 import sys
+import os.path
 
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
@@ -376,3 +377,21 @@ def test_show_openssl(capsys):
     assert 0 == sysca("show", demo_fn("ec-p256-ca.crl"), "--text")
     res = capsys.readouterr()
     assert "X509 CRL" in res.out
+
+
+def test_autogen(capsys, tmp_path):
+    dst = str(tmp_path)
+    err = sysca("autogen", "--text",
+                "--ca-dir", demo_fn("autogen"),
+                "--out-dir", dst,
+                demo_fn("autogen/autogen.ini"))
+    res = capsys.readouterr()
+    assert err == 0
+    assert res
+    assert os.path.isfile(os.path.join(dst, "client_minimal.key"))
+    assert os.path.isfile(os.path.join(dst, "client_minimal.crt"))
+    assert os.path.isfile(os.path.join(dst, "client_standard.key"))
+    assert os.path.isfile(os.path.join(dst, "client_standard.crt"))
+    assert os.path.isfile(os.path.join(dst, "client_special.key"))
+    assert os.path.isfile(os.path.join(dst, "client_special.crt"))
+

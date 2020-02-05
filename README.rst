@@ -532,6 +532,83 @@ Options:
 **--password-file FN**
     Password file for CA private key.  Can be PGP-encrypted.
 
+autogen
+~~~~~~~
+
+Generates key and certificate based on config file.
+
+Options:
+
+**--ca-dir DIRNAME**
+    Where are CA keys located.
+
+**--password-file FN**
+    Password file for CA private key.  Can be PGP-encrypted.
+
+**--out OUTDIR**
+    Directory where output is written.
+
+**--outform PEM|DER**
+    Output file format.  PEM is textual format, DER is binary.  Default: PEM.
+
+Autogen config format
+---------------------
+
+Config is in INI/ConfigParser format::
+
+    [DEFAULT]
+    default_ca = SomeCA
+
+    [webserver]
+    usage = server
+    subject = CN=server.com, O=Org
+    alt_names = dns:server.com, dns:www.server.com
+    days = 500
+    ca_name = ${default_ca}
+
+Default section
+~~~~~~~~~~~~~~~
+
+Config can contain optional section named ``DEFAULT``.  Parameters
+defined there are visible in all other sections.
+
+Named sections
+~~~~~~~~~~~~~~
+
+All other sections define key and certificate pair to generate.
+
+Options:
+
+**ca_name = <CA name>**
+    CA name to use.
+
+    Required parameter, no default.
+
+**days = <number-of-days>**
+    How many days is certificate valid.
+
+    Default: 730
+
+**ktype = key-type**
+    Which key type to use.
+
+    Default: ec
+
+**subject = Subject DN string**
+    Distinguished Name for certificate subject./CN=foo/O=Org/OU=Web/
+
+    Default: CN=${common_name}
+
+**common_name = name**
+    Common name for sertificate when subject= is not given.
+
+    Default: section name.
+
+**alt_names = <SAN string>**
+    Common name for sertificate when subject= is not given.
+
+    Default: set to dns:${common_name} when subject= is missing.
+
 Private Key Protection
 ----------------------
 
