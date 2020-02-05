@@ -4,7 +4,9 @@ Version history
 dev
 ---
 
-Nothing yet.
+* [feature] ``autogen`` command to generate key and sign certificate based
+  on config file.
+* [fix] Proper BrokenPipeError handling.
 
 2.0
 ---
