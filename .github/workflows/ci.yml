@@ -17,8 +17,10 @@ jobs:
   test:
     runs-on: ${{matrix.os}}
     strategy:
+      fail-fast: false
       matrix:
-        os: [ubuntu-20.04, macos-10.15, windows-2019]
+        os: [ubuntu-20.04, macos-10.15]
+        #, windows-2019]
         pyvers: ["3.6", "3.7", "3.8"]
         toxenv: ["py3-cryptography30"]
     steps:
@@ -33,10 +35,11 @@ jobs:
   testcrypto:
     runs-on: ${{matrix.os}}
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-20.04]
         pyvers: ["3.8"]
-        cryptography: ["29", "30"]
+        cryptography: ["21", "22","23", "24", "25", "26", "27", "28", "29", "30"]
     steps:
       - uses: actions/checkout@v2
       - uses: actions/setup-python@v2
