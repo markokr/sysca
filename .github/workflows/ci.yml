@@ -1,0 +1,65 @@
+#
+# https://docs.github.com/en/actions
+# https://github.com/actions
+#
+
+name: CI
+on: [pull_request, push]
+jobs:
+  lint:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-python@v2
+        with: {python-version: "3.8"}
+      - run: python -m pip install tox wheel
+      - run: python -m tox -r -e lint -- --color=yes
+  testpy:
+    runs-on: ${{matrix.os}}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ["ubuntu-20.04"]
+        pyvers: ["3.6", "3.7", "3.8", "3.9"]
+        cryptography: ["34"]
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-python@v2
+        with: {python-version: "${{matrix.pyvers}}"}
+      - run: python -m pip install tox wheel
+      - run: python -m tox -r -- --color=yes
+        env:
+          TOXENV: py3-cryptography${{matrix.cryptography}}
+  testos:
+    runs-on: ${{matrix.os}}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ["ubuntu-16.04", "ubuntu-20.04", "macos-10.15", "windows-2016", "windows-2019"]
+        pyvers: ["3.8"]
+        cryptography: ["34"]
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-python@v2
+        with: {python-version: "${{matrix.pyvers}}"}
+      - run: python -m pip install tox wheel
+      - run: python -m tox -r -- --color=yes
+        env:
+          TOXENV: py3-cryptography${{matrix.cryptography}}
+  testcrypto:
+    runs-on: ${{matrix.os}}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ["ubuntu-20.04"]
+        pyvers: ["3.8"]
+        cryptography: ["21", "24", "27", "30", "34"]
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-python@v2
+        with: {python-version: "${{matrix.pyvers}}"}
+      - run: python -m pip install tox wheel
+      - run: python -m tox -r -- --color=yes
+        env:
+          TOXENV: py3-cryptography${{matrix.cryptography}}
+
