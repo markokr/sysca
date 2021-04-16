@@ -12,7 +12,7 @@ def _version_info():
     try:
         import cryptography
         from cryptography.hazmat.backends import default_backend
-        cver = cryptography.__version__
+        cver = getattr(cryptography, "__version__", "?")
         b = default_backend()
         bver = b.name
         if hasattr(b, "openssl_version_text"):

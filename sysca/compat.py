@@ -3,6 +3,8 @@
 
 # pylint: disable=import-outside-toplevel
 
+from typing import Type, Tuple
+
 from cryptography import x509
 from cryptography.x509.oid import SignatureAlgorithmOID, ExtensionOID
 from cryptography.hazmat.primitives.asymmetric import ec, rsa, dsa
@@ -14,14 +16,17 @@ __all__ = (
 )
 
 
-ed25519 = ed448 = None
 try:
     if hasattr(SignatureAlgorithmOID, "ED25519"):
         from cryptography.hazmat.primitives.asymmetric import ed25519
+    else:
+        ed25519 = None  # type: ignore
     if hasattr(SignatureAlgorithmOID, "ED448"):
         from cryptography.hazmat.primitives.asymmetric import ed448
+    else:
+        ed448 = None  # type: ignore
 except ImportError:
-    pass
+    ed25519 = ed448 = None  # type: ignore
 
 # curves that always exist
 EC_CURVES = {
@@ -42,22 +47,19 @@ except ImportError:
 
 
 # collect classes for isinstance() checks
-PUBKEY_CLASSES = [ec.EllipticCurvePublicKey, rsa.RSAPublicKey, dsa.DSAPublicKey]
-PRIVKEY_CLASSES = [ec.EllipticCurvePrivateKey, rsa.RSAPrivateKey, dsa.DSAPrivateKey]
-EDDSA_PUBKEY_CLASSES = []
-EDDSA_PRIVKEY_CLASSES = []
+PUBKEY_CLASSES: Tuple[Type, ...] = (ec.EllipticCurvePublicKey, rsa.RSAPublicKey, dsa.DSAPublicKey)
+PRIVKEY_CLASSES: Tuple[Type, ...] = (ec.EllipticCurvePrivateKey, rsa.RSAPrivateKey, dsa.DSAPrivateKey)
+EDDSA_PUBKEY_CLASSES: Tuple[Type, ...] = ()
+EDDSA_PRIVKEY_CLASSES: Tuple[Type, ...] = ()
 if ed25519 is not None:
-    EDDSA_PUBKEY_CLASSES.append(ed25519.Ed25519PublicKey)
-    EDDSA_PRIVKEY_CLASSES.append(ed25519.Ed25519PrivateKey)
+    EDDSA_PUBKEY_CLASSES += (ed25519.Ed25519PublicKey,)
+    EDDSA_PRIVKEY_CLASSES += (ed25519.Ed25519PrivateKey,)
 if ed448 is not None:
-    EDDSA_PUBKEY_CLASSES.append(ed448.Ed448PublicKey)
-    EDDSA_PRIVKEY_CLASSES.append(ed448.Ed448PrivateKey)
-# isinstance() needs tuples
-PUBKEY_CLASSES = tuple(PUBKEY_CLASSES + EDDSA_PUBKEY_CLASSES)
-PRIVKEY_CLASSES = tuple(PRIVKEY_CLASSES + EDDSA_PRIVKEY_CLASSES)
-EDDSA_PUBKEY_CLASSES = tuple(EDDSA_PUBKEY_CLASSES)
-EDDSA_PRIVKEY_CLASSES = tuple(EDDSA_PRIVKEY_CLASSES)
-X509_CLASSES = (x509.Certificate, x509.CertificateSigningRequest, x509.CertificateRevocationList)
+    EDDSA_PUBKEY_CLASSES += (ed448.Ed448PublicKey,)
+    EDDSA_PRIVKEY_CLASSES += (ed448.Ed448PrivateKey,)
+PUBKEY_CLASSES += EDDSA_PUBKEY_CLASSES
+PRIVKEY_CLASSES += EDDSA_PRIVKEY_CLASSES
+X509_CLASSES: Tuple[Type, ...] = (x509.Certificate, x509.CertificateSigningRequest, x509.CertificateRevocationList)
 
 # workaround bug in cryptography 2.x
 

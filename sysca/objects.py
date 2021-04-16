@@ -205,13 +205,16 @@ def make_policy(txt):
             klist = [k for k in klist if k not in ("T", "N", "O")]
             if klist:
                 raise InvalidCertificate("Bad policy spec: unknown fields: %r" % klist)
+            v_noticeref = d.get("N")
+            v_orgname = d.get("O", "")
+            v_text = d.get("T")
             ref = None
             nums = None
-            if d.get("N"):
-                nums = [int(n) for n in d.get("N").split(":")]
-            if d.get("O") or nums:
-                ref = x509.NoticeReference(d.get("O", ""), nums or [])
-            quals.append(x509.UserNotice(ref, d.get("T")))
+            if v_noticeref:
+                nums = [int(n) for n in v_noticeref.split(":")]
+            if v_orgname or nums:
+                ref = x509.NoticeReference(v_orgname, nums or [])
+            quals.append(x509.UserNotice(ref, v_text))
     return x509.PolicyInformation(pol_oid, quals)
 
 
