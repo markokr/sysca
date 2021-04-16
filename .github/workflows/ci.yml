@@ -14,52 +14,29 @@ jobs:
         with: {python-version: "3.8"}
       - run: python -m pip install tox wheel
       - run: python -m tox -r -e lint -- --color=yes
-  testpy:
-    runs-on: ${{matrix.os}}
+  test:
+    runs-on: "${{matrix.pick.OS}}"
     strategy:
       fail-fast: false
       matrix:
-        os: ["ubuntu-20.04"]
-        pyvers: ["3.6", "3.7", "3.8", "3.9"]
-        cryptography: ["34"]
+        pick:
+          - {OS: "ubuntu-16.04", ARCH: "x64", PY: "3.6", CRYPTO: "21"}
+          - {OS: "ubuntu-18.04", ARCH: "x64", PY: "3.7", CRYPTO: "27"}
+          - {OS: "ubuntu-20.04", ARCH: "x64", PY: "3.8", CRYPTO: "31"}
+          - {OS: "ubuntu-20.04", ARCH: "x64", PY: "3.9", CRYPTO: "34"}
+          - {OS: "windows-2016", ARCH: "x86", PY: "3.6", CRYPTO: "32"}
+          - {OS: "windows-2016", ARCH: "x64", PY: "3.7", CRYPTO: "33"}
+          - {OS: "windows-2019", ARCH: "x86", PY: "3.8", CRYPTO: "34"}
+          - {OS: "windows-2019", ARCH: "x64", PY: "3.9", CRYPTO: "34"}
+          - {OS: "macos-10.15", ARCH: "x64", PY: "3.8", CRYPTO: "34"}
     steps:
       - uses: actions/checkout@v2
       - uses: actions/setup-python@v2
-        with: {python-version: "${{matrix.pyvers}}"}
+        with:
+          python-version: "${{matrix.pick.PY}}"
+          architecture: "${{matrix.pick.ARCH}}"
       - run: python -m pip install tox wheel
       - run: python -m tox -r -- --color=yes
         env:
-          TOXENV: py3-cryptography${{matrix.cryptography}}
-  testos:
-    runs-on: ${{matrix.os}}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: ["ubuntu-16.04", "ubuntu-20.04", "macos-10.15", "windows-2016", "windows-2019"]
-        pyvers: ["3.8"]
-        cryptography: ["34"]
-    steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-python@v2
-        with: {python-version: "${{matrix.pyvers}}"}
-      - run: python -m pip install tox wheel
-      - run: python -m tox -r -- --color=yes
-        env:
-          TOXENV: py3-cryptography${{matrix.cryptography}}
-  testcrypto:
-    runs-on: ${{matrix.os}}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: ["ubuntu-20.04"]
-        pyvers: ["3.8"]
-        cryptography: ["21", "24", "27", "30", "34"]
-    steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-python@v2
-        with: {python-version: "${{matrix.pyvers}}"}
-      - run: python -m pip install tox wheel
-      - run: python -m tox -r -- --color=yes
-        env:
-          TOXENV: py3-cryptography${{matrix.cryptography}}
+          TOXENV: "py3-cryptography${{matrix.pick.CRYPTO}}"
 
