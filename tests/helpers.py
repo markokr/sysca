@@ -12,8 +12,11 @@ def demo_fn(basename):
 
 
 def demo_data(basename, mode="rb"):
-    with open(demo_fn(basename), mode) as f:
-        return f.read()
+    if "b" in mode:
+        with open(demo_fn(basename), mode) as f:
+            return f.read().replace(b"\r\n", b"\n")
+    with open(demo_fn(basename), mode, encoding="utf8") as f:
+        return f.read().replace("\r\n", "\n")
 
 
 def demo_raw(basename):

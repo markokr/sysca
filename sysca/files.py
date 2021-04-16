@@ -51,7 +51,7 @@ def load_password(fn):
     """
     if not fn:
         return None
-    return load_gpg_file(fn).strip(b"\n")
+    return load_gpg_file(fn).strip(b"\r\n")
 
 
 def load_key(fn, psw=None):
