@@ -6,8 +6,8 @@
 from typing import Type, Tuple
 
 from cryptography import x509
-from cryptography.x509.oid import SignatureAlgorithmOID, ExtensionOID
 from cryptography.hazmat.primitives.asymmetric import ec, rsa, dsa
+from cryptography.hazmat.primitives.asymmetric import ed25519, ed448
 
 __all__ = (
     "X509_CLASSES", "PUBKEY_CLASSES", "PRIVKEY_CLASSES",
@@ -15,18 +15,6 @@ __all__ = (
     "EC_CURVES", "ed25519", "ed448",
 )
 
-
-try:
-    if hasattr(SignatureAlgorithmOID, "ED25519"):
-        from cryptography.hazmat.primitives.asymmetric import ed25519
-    else:
-        ed25519 = None  # type: ignore
-    if hasattr(SignatureAlgorithmOID, "ED448"):
-        from cryptography.hazmat.primitives.asymmetric import ed448
-    else:
-        ed448 = None  # type: ignore
-except ImportError:
-    ed25519 = ed448 = None  # type: ignore
 
 # curves that always exist
 EC_CURVES = {
@@ -49,33 +37,9 @@ except ImportError:
 # collect classes for isinstance() checks
 PUBKEY_CLASSES: Tuple[Type, ...] = (ec.EllipticCurvePublicKey, rsa.RSAPublicKey, dsa.DSAPublicKey)
 PRIVKEY_CLASSES: Tuple[Type, ...] = (ec.EllipticCurvePrivateKey, rsa.RSAPrivateKey, dsa.DSAPrivateKey)
-EDDSA_PUBKEY_CLASSES: Tuple[Type, ...] = ()
-EDDSA_PRIVKEY_CLASSES: Tuple[Type, ...] = ()
-if ed25519 is not None:
-    EDDSA_PUBKEY_CLASSES += (ed25519.Ed25519PublicKey,)
-    EDDSA_PRIVKEY_CLASSES += (ed25519.Ed25519PrivateKey,)
-if ed448 is not None:
-    EDDSA_PUBKEY_CLASSES += (ed448.Ed448PublicKey,)
-    EDDSA_PRIVKEY_CLASSES += (ed448.Ed448PrivateKey,)
+EDDSA_PUBKEY_CLASSES: Tuple[Type, ...] = (ed25519.Ed25519PublicKey, ed448.Ed448PublicKey)
+EDDSA_PRIVKEY_CLASSES: Tuple[Type, ...] = (ed25519.Ed25519PrivateKey, ed448.Ed448PrivateKey)
 PUBKEY_CLASSES += EDDSA_PUBKEY_CLASSES
 PRIVKEY_CLASSES += EDDSA_PRIVKEY_CLASSES
 X509_CLASSES: Tuple[Type, ...] = (x509.Certificate, x509.CertificateSigningRequest, x509.CertificateRevocationList)
 
-# workaround bug in cryptography 2.x
-
-
-def _crl_fixup():
-    from cryptography.hazmat.backends.openssl import encode_asn1, decode_asn1
-    oid = ExtensionOID.FRESHEST_CRL
-    crt_enc = getattr(encode_asn1, "_EXTENSION_ENCODE_HANDLERS", {})
-    crl_enc = getattr(encode_asn1, "_CRL_EXTENSION_ENCODE_HANDLERS", {})
-    if oid not in crl_enc and oid in crt_enc:
-        crl_enc[oid] = crt_enc[oid]
-    crt_dec = getattr(decode_asn1, "_EXTENSION_HANDLERS_NO_SCT", {})
-    crl_dec = getattr(decode_asn1, "_CRL_EXTENSION_HANDLERS", {})
-    if oid not in crl_dec and oid in crt_dec:
-        crl_dec[oid] = crt_dec[oid]
-
-
-if hasattr(ExtensionOID, "FRESHEST_CRL"):
-    _crl_fixup()

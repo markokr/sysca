@@ -24,7 +24,7 @@ setup(
         "console_scripts": ["sysca=sysca.tool:main"],
     },
     zip_safe=True,
-    install_requires=["cryptography>=2.1"],
+    install_requires=["cryptography>=2.8"],
     keywords=["x509", "tls", "ssl", "certificate", "authority", "command-line", "server", "authentication"],
     classifiers=[
         "Development Status :: 5 - Production/Stable",
