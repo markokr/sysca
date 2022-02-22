@@ -9,14 +9,13 @@ all:
 test:
 	#rm -rf cover
 	tox -e lint
-	tox -e py36-cryptography21
-	tox -e py36-cryptography22
-	tox -e py36-cryptography23
-	tox -e py36-cryptography24
-	tox -e py36-cryptography25
-	tox -e py37-cryptography26
-	tox -e py37-cryptography27
-	tox -e py38-cryptography28
+	tox -e py39-cryptography28
+	tox -e py38-cryptography29
+	tox -e py38-cryptography30
+	tox -e py38-cryptography31
+	tox -e py38-cryptography32
+	tox -e py39-cryptography33
+	tox -e py38-cryptography34
 
 sdist: $(TGZ)
 $(TGZ):
