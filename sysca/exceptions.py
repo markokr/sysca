@@ -10,3 +10,4 @@ class InvalidCertificate(ValueError):
 
 class UnsupportedParameter(ValueError):
     """Invalid parameter."""
+

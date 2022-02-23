@@ -2,22 +2,21 @@
 """
 
 import ipaddress
+from typing import Optional, Sequence
 
 from cryptography import x509
-from cryptography.x509.oid import ObjectIdentifier, NameOID, AuthorityInformationAccessOID
 from cryptography.hazmat.primitives.serialization import (
-    Encoding, PrivateFormat, PublicFormat,
-    BestAvailableEncryption, NoEncryption,
+    BestAvailableEncryption, Encoding,
+    NoEncryption, PrivateFormat, PublicFormat,
+)
+from cryptography.x509.oid import (
+    AuthorityInformationAccessOID, NameOID, ObjectIdentifier,
 )
 
-from .compat import (
-    PUBKEY_CLASSES, PRIVKEY_CLASSES, X509_CLASSES,
-)
+from .compat import PRIVKEY_CLASSES, PUBKEY_CLASSES, X509_CLASSES
 from .exceptions import InvalidCertificate
 from .formats import (
-    as_password,
-    parse_list, parse_dn,
-    list_escape, render_name,
+    as_password, list_escape, parse_dn, parse_list, render_name,
 )
 from .ssh import serialize_ssh_private_key, serialize_ssh_public_key
 
@@ -114,7 +113,7 @@ DN_OID_TO_CODE = {v: k for k, v in sorted(DN_CODE_TO_OID.items(), reverse=True)}
 #
 
 
-def extract_name(name):
+def extract_name(name: Optional[x509.Name]) -> Optional[Sequence[Sequence[str]]]:
     """Convert Name object to shortcut-dict.
     """
     if name is None:
@@ -125,8 +124,10 @@ def extract_name(name):
     for rdn in name.rdns:
         pairs = []
         for att in rdn:
-            name = DN_OID_TO_CODE.get(att.oid, att.oid.dotted_string)
-            pairs.append(name)
+            if isinstance(att.value, bytes):
+                raise TypeError("Expect str value")
+            rname = DN_OID_TO_CODE.get(att.oid, att.oid.dotted_string)
+            pairs.append(rname)
             pairs.append(att.value)
         rdns.append(tuple(pairs))
     return tuple(rdns)
@@ -415,3 +416,4 @@ def extract_auth_access(extobj):
         else:
             raise InvalidCertificate("Unsupported access_method: %s" % (ad.access_method,))
     return issuer_urls, ocsp_urls
+

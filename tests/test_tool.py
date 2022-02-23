@@ -35,7 +35,7 @@ def test_no_command(capsys):
 def test_help(capsys):
     assert sysca("--help") == 0
     res = capsys.readouterr()
-    assert "optional" in res.out
+    assert "unsafe" in res.out
 
 
 def test_version(capsys):

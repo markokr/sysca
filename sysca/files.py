@@ -4,14 +4,16 @@
 import os.path
 import re
 import subprocess
+from typing import Mapping, Optional, Union
 
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.serialization import (
-    load_pem_public_key, load_der_public_key,
-    load_pem_private_key, load_der_private_key,
+    load_der_private_key, load_der_public_key,
+    load_pem_private_key, load_pem_public_key,
 )
 
+from .compat import PRIVKEY_TYPES, PUBKEY_TYPES
 from .formats import as_password
 from .ssh import load_ssh_private_key, load_ssh_public_key
 
@@ -22,7 +24,7 @@ __all__ = (
 )
 
 
-def load_gpg_file(fn, check_ext=True):
+def load_gpg_file(fn: str, check_ext: bool = True) -> bytes:
     """Decrypt file if .gpg extension.
     """
     if check_ext:
@@ -31,8 +33,8 @@ def load_gpg_file(fn, check_ext=True):
             return open(fn, "rb").read()
 
     cmd = ["gpg", "-q", "-d", "--batch", "--no-tty", fn]
-    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    out, err = p.communicate()
+    with subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE) as p:
+        out, err = p.communicate()
     log = err.decode("utf8", "replace").strip()
     if p.returncode != 0:
         raise Exception("gpg failed: %s" % log)
@@ -46,7 +48,7 @@ def load_gpg_file(fn, check_ext=True):
     return out
 
 
-def load_password(fn):
+def load_password(fn: str) -> Optional[bytes]:
     """Read password from potentially gpg-encrypted file.
     """
     if not fn:
@@ -54,7 +56,7 @@ def load_password(fn):
     return load_gpg_file(fn).strip(b"\r\n")
 
 
-def load_key(fn, psw=None):
+def load_key(fn: str, psw: Optional[bytes] = None) -> PRIVKEY_TYPES:
     """Read private key, decrypt if needed.
     """
     if psw:
@@ -68,37 +70,41 @@ def load_key(fn, psw=None):
     return key
 
 
-def load_pub_key(fn):
+def load_pub_key(fn: str) -> PUBKEY_TYPES:
     """Read public key file.
     """
-    data = open(fn, "rb").read()
+    with open(fn, "rb") as f:
+        data = f.read()
     if is_pem_data(data):
         return load_pem_public_key(data, default_backend())
     return load_der_public_key(data, default_backend())
 
 
-def load_req(fn):
+def load_req(fn: str) -> x509.CertificateSigningRequest:
     """Read CSR file.
     """
-    data = open(fn, "rb").read()
+    with open(fn, "rb") as f:
+        data = f.read()
     if is_pem_data(data):
         return x509.load_pem_x509_csr(data, default_backend())
     return x509.load_der_x509_csr(data, default_backend())
 
 
-def load_cert(fn):
+def load_cert(fn: str) -> x509.Certificate:
     """Read CRT file.
     """
-    data = open(fn, "rb").read()
+    with open(fn, "rb") as f:
+        data = f.read()
     if is_pem_data(data):
         return x509.load_pem_x509_certificate(data, default_backend())
     return x509.load_der_x509_certificate(data, default_backend())
 
 
-def load_crl(fn):
+def load_crl(fn: str) -> x509.CertificateRevocationList:
     """Read CRL file.
     """
-    data = open(fn, "rb").read()
+    with open(fn, "rb") as f:
+        data = f.read()
     if is_pem_data(data):
         return x509.load_pem_x509_crl(data, default_backend())
     return x509.load_der_x509_crl(data, default_backend())
@@ -107,7 +113,7 @@ def load_crl(fn):
 _bin_rc = re.compile(b"[\x00-\x08\x0b\x0c\x0e-\x1f]")
 
 
-def is_pem_data(data):
+def is_pem_data(data: bytes) -> bool:
     """Detect if data is textual.
     """
     return not _bin_rc.search(data)
@@ -126,7 +132,7 @@ def is_pem_data(data):
 # PGP PUBLIC KEY BLOCK
 # PGP PRIVATE KEY BLOCK
 # PGP MESSAGE
-PEM_SUFFIXES = {
+PEM_SUFFIXES: Mapping[bytes, str] = {
     b" CERTIFICATE": "crt",
     b" CRL": "crl",
     b" REQUEST": "csr",
@@ -146,7 +152,7 @@ PEM_SUFFIXES = {
 }
 
 
-def autodetect_data(data):
+def autodetect_data(data: bytes) -> Optional[str]:
     """Relaxed autodetect, for "show".
     """
     words = b"(?: [A-Z][A-Z0-9]*)+"
@@ -187,7 +193,7 @@ EXT_MAP = {
 }
 
 
-def autodetect_filename(fn):
+def autodetect_filename(fn: str) -> Optional[str]:
     """Guess based on filename.
     """
     for k in EXT_MAP:
@@ -196,7 +202,7 @@ def autodetect_filename(fn):
     return None
 
 
-def autodetect_file(fn):
+def autodetect_file(fn: str) -> Optional[str]:
     """Run both filename and data detection.
     """
     fmt = autodetect_filename(fn)
@@ -206,7 +212,13 @@ def autodetect_file(fn):
     return fmt
 
 
-def load_file_any(fn, password=None):
+def load_file_any(fn: str, password: Optional[Union[str, bytes]] = None) -> Optional[Union[
+    x509.CertificateSigningRequest,
+    x509.CertificateRevocationList,
+    x509.Certificate,
+    PUBKEY_TYPES,
+    PRIVKEY_TYPES,
+]]:
     """Load any format supported
     """
     password = as_password(password)
@@ -238,3 +250,4 @@ def load_file_any(fn, password=None):
     elif fmt == "pub-ssh":
         return load_ssh_public_key(data, default_backend())
     return None
+

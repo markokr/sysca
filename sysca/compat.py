@@ -3,11 +3,12 @@
 
 # pylint: disable=import-outside-toplevel
 
-from typing import Type, Tuple
+from typing import Tuple, Type, Union
 
 from cryptography import x509
-from cryptography.hazmat.primitives.asymmetric import ec, rsa, dsa
-from cryptography.hazmat.primitives.asymmetric import ed25519, ed448
+from cryptography.hazmat.primitives.asymmetric import (
+    dh, dsa, ec, ed448, ed25519, rsa, x448, x25519,
+)
 
 __all__ = (
     "X509_CLASSES", "PUBKEY_CLASSES", "PRIVKEY_CLASSES",
@@ -27,7 +28,9 @@ EC_CURVES = {
 
 # load all curves
 try:
-    from cryptography.hazmat.primitives.asymmetric.ec import EllipticCurveOID, get_curve_for_oid
+    from cryptography.hazmat.primitives.asymmetric.ec import (
+        EllipticCurveOID, get_curve_for_oid,
+    )
     EC_CURVES.update({n.lower(): get_curve_for_oid(getattr(EllipticCurveOID, n))
                       for n in dir(EllipticCurveOID) if n[0] != "_"})
 except ImportError:
@@ -39,7 +42,23 @@ PUBKEY_CLASSES: Tuple[Type, ...] = (ec.EllipticCurvePublicKey, rsa.RSAPublicKey,
 PRIVKEY_CLASSES: Tuple[Type, ...] = (ec.EllipticCurvePrivateKey, rsa.RSAPrivateKey, dsa.DSAPrivateKey)
 EDDSA_PUBKEY_CLASSES: Tuple[Type, ...] = (ed25519.Ed25519PublicKey, ed448.Ed448PublicKey)
 EDDSA_PRIVKEY_CLASSES: Tuple[Type, ...] = (ed25519.Ed25519PrivateKey, ed448.Ed448PrivateKey)
-PUBKEY_CLASSES += EDDSA_PUBKEY_CLASSES
-PRIVKEY_CLASSES += EDDSA_PRIVKEY_CLASSES
+X_PUBKEY_CLASSES: Tuple[Type, ...] = (x25519.X25519PublicKey, x448.X448PublicKey)
+X_PRIVKEY_CLASSES: Tuple[Type, ...] = (x25519.X25519PrivateKey, x448.X448PrivateKey)
+PUBKEY_CLASSES += EDDSA_PUBKEY_CLASSES + X_PUBKEY_CLASSES
+PRIVKEY_CLASSES += EDDSA_PRIVKEY_CLASSES + X_PRIVKEY_CLASSES
 X509_CLASSES: Tuple[Type, ...] = (x509.Certificate, x509.CertificateSigningRequest, x509.CertificateRevocationList)
+
+PRIVKEY_TYPES = Union[
+    ec.EllipticCurvePrivateKey, rsa.RSAPrivateKey, dsa.DSAPrivateKey,
+    ed25519.Ed25519PrivateKey, ed448.Ed448PrivateKey,
+    x25519.X25519PrivateKey, x448.X448PrivateKey,
+    dh.DHPrivateKey,
+]
+
+PUBKEY_TYPES = Union[
+    ec.EllipticCurvePublicKey, rsa.RSAPublicKey, dsa.DSAPublicKey,
+    ed25519.Ed25519PublicKey, ed448.Ed448PublicKey,
+    x25519.X25519PublicKey, x448.X448PublicKey,
+    dh.DHPublicKey,
+]
 

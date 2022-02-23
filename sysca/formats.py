@@ -1,9 +1,12 @@
 """String <> Python objects.
 """
 
-import re
 import binascii
+import re
 from datetime import datetime, timedelta
+from typing import (
+    Callable, Dict, Iterable, List, Match, Optional, Sequence, Union,
+)
 
 __all__ = (
     "as_bytes", "as_password",
@@ -15,7 +18,7 @@ __all__ = (
 )
 
 
-def as_bytes(s):
+def as_bytes(s: Union[str, bytes]) -> bytes:
     """Return byte-string.
     """
     if not isinstance(s, bytes):
@@ -23,7 +26,7 @@ def as_bytes(s):
     return s
 
 
-def as_password(password):
+def as_password(password: Optional[Union[str, bytes]]) -> Optional[bytes]:
     if not password:
         return None
     if not isinstance(password, (bytes, bytearray, memoryview)):
@@ -31,7 +34,7 @@ def as_password(password):
     return password
 
 
-def render_serial(snum):
+def render_serial(snum: int) -> str:
     """Format certificate serial number as string.
     """
     s = "%x" % snum
@@ -40,7 +43,7 @@ def render_serial(snum):
     return s
 
 
-def parse_number(sval):
+def parse_number(sval: str) -> int:
     """Parse number from command line.
     """
     if re.match(r"^[0-9a-f]+(:[0-9a-f]+)+$", sval, re.I):
@@ -54,7 +57,7 @@ def parse_number(sval):
     return val
 
 
-def parse_timestamp(sval):
+def parse_timestamp(sval: str) -> datetime:
     """Parse date from command line.
     """
     if hasattr(datetime, "fromisoformat"):
@@ -68,7 +71,7 @@ def parse_timestamp(sval):
     raise ValueError("Invalid timestamp: %r" % sval)
 
 
-def _escape_char(m):
+def _escape_char(m: Match[str]) -> str:
     """Backslash-escape.
     """
     c = m.group(0)
@@ -77,13 +80,13 @@ def _escape_char(m):
     return "\\x%02x" % ord(c)
 
 
-def list_escape(s):
+def list_escape(s: str) -> str:
     """Escape value for comma-separated list
     """
     return re.sub(r"[\\,]", _escape_char, s)
 
 
-def show_list(desc, lst, writeln):
+def show_list(desc: str, lst: List[str], writeln: Callable[[str], None]) -> None:
     """Print out list field.
     """
     if not lst:
@@ -96,7 +99,7 @@ def show_list(desc, lst, writeln):
             writeln("  %s" % (val,))
 
 
-def to_hex(data):
+def to_hex(data: Optional[bytes]) -> Optional[str]:
     """Converts bytes to hex if not None
     """
     if data is None:
@@ -106,7 +109,7 @@ def to_hex(data):
     return binascii.b2a_hex(data).decode("ascii")
 
 
-def _unescape_char(m):
+def _unescape_char(m: Match[str]) -> str:
     """Unescape helper
     """
     xmap = {",": ",", "/": "/", "\\": "\\", "t": "\t"}
@@ -117,19 +120,19 @@ def _unescape_char(m):
     return xmap[c]
 
 
-def unescape(s):
+def unescape(s: str) -> str:
     """Remove backslash escapes.
     """
     return re.sub(r"\\(x[0-9a-fA-F][0-9a-fA-F]|.)", _unescape_char, s)
 
 
-def render_name(name_att_list, sep=","):
+def render_name(name_att_list: Iterable[Sequence[str]], sep: str = ",") -> str:
     """Convert DistinguishedName dict to "," or "/"-separated string.
     """
     return ldap_to_string(name_att_list, sep)
 
 
-def maybe_parse(val, parse_func):
+def maybe_parse(val: Optional[Union[str, bytes, Dict[str, str], Sequence[str]]], parse_func):
     """Parse argument value with function if string.
     """
     if val is None:
@@ -155,7 +158,7 @@ def maybe_parse_str(val, parse_func, vtype):
     return val
 
 
-def loop_escaped(val, c):
+def loop_escaped(val: str, c: str) -> Iterable[str]:
     """Parse list of strings, separated by c.
     """
     if not val:
@@ -173,7 +176,7 @@ def loop_escaped(val, c):
         yield unescape(m.group(0))
 
 
-def parse_list(slist):
+def parse_list(slist: str) -> List[str]:
     """Parse comma-separated list to strings.
     """
     res = []
@@ -184,7 +187,7 @@ def parse_list(slist):
     return res
 
 
-def parse_dn(dnstr):
+def parse_dn(dnstr: str):
     """Parse openssl-style /-separated list to dict.
     """
     return ldap_from_string(dnstr)
@@ -231,21 +234,21 @@ _ldap_escape_rc = re.compile(r"""\A[ #]|[ ]\Z|["+;<>\\=\x00-\x1F\x7F-\x9F]""")
 _ldap_unescape_rc = re.compile(r"(?:\\[0-9a-fA-F][0-9a-fA-F])+|\\.")
 
 
-def _ldap_escape_fn(m):
+def _ldap_escape_fn(m: Match[str]) -> str:
     c = m.group()
     if c < "\x20" or c >= "\x7F":
         return "\\%02x" % ord(c)
     return "\\" + c
 
 
-def _ldap_escape(s, sep):
+def _ldap_escape(s: str, sep: str) -> str:
     s = _ldap_escape_rc.sub(_ldap_escape_fn, s)
     if sep in s:
         s = s.replace(sep, "\\" + sep)
     return s
 
 
-def _ldap_unescape_fn(m):
+def _ldap_unescape_fn(m: Match[str]) -> str:
     s = m.group()
     if len(s) > 2:
         s = s.replace("\\", "")
@@ -253,7 +256,7 @@ def _ldap_unescape_fn(m):
     return s[1]
 
 
-def _ldap_unescape(val):
+def _ldap_unescape(val: List[str]) -> str:
     # avoid eating escaped whitespace
     while val and val[-1].isspace():
         val.pop()
@@ -263,7 +266,7 @@ def _ldap_unescape(val):
     return _ldap_unescape_rc.sub(_ldap_unescape_fn, s)
 
 
-def ldap_to_string(mv_rdn, rdnsep=","):
+def ldap_to_string(mv_rdn: Iterable[Sequence[str]], rdnsep=","):
     """Render RDN list using format from RFC4514.
     """
     if rdnsep not in _ldap_allow_sep:
@@ -286,7 +289,7 @@ def ldap_to_string(mv_rdn, rdnsep=","):
     return "%s%s%s" % (rdnsep, "".join(res), rdnsep)
 
 
-def ldap_from_string(val):
+def ldap_from_string(val: str) -> Sequence[Sequence[str]]:
     """Parse RDN list using format from RFC4514.
     """
     sep = ","
@@ -295,10 +298,10 @@ def ldap_from_string(val):
 
     rdns = []
     rdn = []
-    key = []
-    curTok = []
+    key: List[str] = []
+    curTok: List[str] = []
 
-    def flushpair():
+    def flushpair() -> None:
         k = _ldap_unescape(key)
         v = _ldap_unescape(curTok)
         if k:
@@ -333,3 +336,4 @@ def ldap_from_string(val):
     if rdn:
         rdns.append(tuple(rdn))
     return tuple(rdns)
+

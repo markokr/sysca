@@ -87,9 +87,10 @@ def run_openssl(cmd, srcfn, outfn=None, data=b"", extra_args=None):
         cmdline.extend(["-out", outfn])
     if extra_args:
         cmdline.extend(extra_args)
-    p = subprocess.Popen(cmdline, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                         stdin=subprocess.PIPE)
-    out, err = p.communicate(data)
+    with subprocess.Popen(
+            cmdline, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            stdin=subprocess.PIPE) as p:
+        out, err = p.communicate(data)
     out = out.decode("utf8", "replace")
     err = err.decode("utf8", "replace")
     if p.returncode == 0:

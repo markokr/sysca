@@ -4,25 +4,23 @@
 from datetime import datetime
 
 from cryptography import x509
-from cryptography.x509.oid import (
-    AuthorityInformationAccessOID, ExtensionOID, CRLEntryExtensionOID,
-)
 from cryptography.hazmat.backends import default_backend
+from cryptography.x509.oid import (
+    AuthorityInformationAccessOID, CRLEntryExtensionOID, ExtensionOID,
+)
 
 from .certinfo import CertInfo
 from .exceptions import InvalidCertificate
-from .keys import get_hash_algo, valid_privkey
 from .formats import (
-    parse_list, show_list, maybe_parse, render_name,
-    render_serial, to_issuer_gnames, to_hex,
-    maybe_parse_str, parse_timestamp, parse_number,
-    parse_time_period,
+    maybe_parse, maybe_parse_str, parse_list, parse_number,
+    parse_time_period, parse_timestamp, render_name,
+    render_serial, show_list, to_hex, to_issuer_gnames,
 )
+from .keys import get_hash_algo, valid_privkey
 from .objects import (
-    extract_name, extract_gnames, make_gnames, make_name,
-    convert_urls_to_gnames,
-    extract_distribution_point_urls,
-    extract_auth_access,
+    convert_urls_to_gnames, extract_auth_access,
+    extract_distribution_point_urls, extract_gnames,
+    extract_name, make_gnames, make_name,
 )
 
 __all__ = ("CRLInfo", "RevCertInfo", "create_x509_crl")
@@ -407,3 +405,4 @@ def create_x509_crl(issuer_privkey, issuer_info, crl_info, days=None,
                        algorithm=get_hash_algo(issuer_privkey, "CRL"),
                        backend=default_backend())
     return crl
+

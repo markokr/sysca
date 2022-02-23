@@ -4,18 +4,21 @@ TGZ = dist/sysca-$(VER).tar.gz
 
 all:
 	tox -e lint
-	tox -e py3-cryptography28
+	tox -e py3-cryptography37
 
 test:
 	#rm -rf cover
 	tox -e lint
-	tox -e py39-cryptography28
+	tox -e py37-cryptography28
 	tox -e py38-cryptography29
 	tox -e py38-cryptography30
 	tox -e py38-cryptography31
 	tox -e py38-cryptography32
 	tox -e py39-cryptography33
 	tox -e py38-cryptography34
+	tox -e py38-cryptography35
+	#tox -e py39-cryptography36
+	tox -e py39-cryptography37
 
 sdist: $(TGZ)
 $(TGZ):

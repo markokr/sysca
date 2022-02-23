@@ -2,32 +2,27 @@
 """
 
 from cryptography import x509
-from cryptography.x509.oid import (
-    AuthorityInformationAccessOID, ExtendedKeyUsageOID, ExtensionOID,
-    ObjectIdentifier,
-)
 from cryptography.hazmat.backends import default_backend
+from cryptography.x509.oid import (
+    AuthorityInformationAccessOID, ExtendedKeyUsageOID,
+    ExtensionOID, ObjectIdentifier,
+)
 
-from .compat import PUBKEY_CLASSES, PRIVKEY_CLASSES
+from .compat import PRIVKEY_CLASSES, PUBKEY_CLASSES
 from .exceptions import InvalidCertificate
 from .formats import (
-    parse_list, parse_dn, maybe_parse,
-    show_list, to_hex, render_serial, render_name,
-    maybe_parse_str,
-    parse_time_period, parse_number,
+    maybe_parse, maybe_parse_str, parse_dn, parse_list, parse_number,
+    parse_time_period, render_name, render_serial, show_list, to_hex,
 )
 from .keys import (
-    get_hash_algo, get_key_name, valid_privkey, valid_pubkey,
-    new_serial_number, same_pubkey,
-    get_invalid_key_usage,
+    get_hash_algo, get_invalid_key_usage, get_key_name,
+    new_serial_number, same_pubkey, valid_privkey, valid_pubkey,
 )
 from .objects import (
-    convert_urls_to_gnames,
-    extract_auth_access, extract_distribution_point_urls,
-    extract_gnames, extract_name, extract_policy,
-    make_gnames, make_key_usage, make_name, make_policy,
+    convert_urls_to_gnames, extract_auth_access,
+    extract_distribution_point_urls, extract_gnames, extract_name,
+    extract_policy, make_gnames, make_key_usage, make_name, make_policy,
 )
-
 
 __all__ = ("CertInfo", "create_x509_req", "create_x509_cert")
 
@@ -584,7 +579,7 @@ def validate_subject_ca(subject_info, issuer_info):
 
 def create_x509_cert(issuer_privkey, subject_pubkey, subject_info, issuer_info,
                      days=None, serial_number=None,
-                     not_valid_before=None, not_valid_after=None):
+                     not_valid_before=None, not_valid_after=None) -> x509.Certificate:
     """Create x509.Certificate
     """
     if isinstance(subject_info, x509.CertificateSigningRequest):
@@ -637,3 +632,4 @@ def create_x509_cert(issuer_privkey, subject_pubkey, subject_info, issuer_info,
                         algorithm=get_hash_algo(issuer_privkey, "CRT"),
                         backend=default_backend())
     return cert
+

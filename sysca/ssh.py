@@ -2,13 +2,13 @@
 """
 
 from cryptography.hazmat.primitives.serialization import (
-    Encoding, PrivateFormat, PublicFormat,
-    NoEncryption, BestAvailableEncryption,
+    BestAvailableEncryption, Encoding,
+    NoEncryption, PrivateFormat, PublicFormat,
 )
 
 try:
     from cryptography.hazmat.primitives.serialization.ssh import (
-        load_ssh_public_key, load_ssh_private_key,
+        load_ssh_private_key, load_ssh_public_key,
     )
     HAVE_SSH = True
 except ImportError:

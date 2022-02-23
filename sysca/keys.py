@@ -4,15 +4,15 @@
 import os
 
 from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives.asymmetric import ec, rsa, dsa
+from cryptography.hazmat.primitives.asymmetric import dsa, ec, rsa
 from cryptography.hazmat.primitives.hashes import SHA256, SHA384, SHA512
-from cryptography.hazmat.primitives.serialization import (Encoding, PublicFormat)
+from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
-from .exceptions import UnsupportedParameter
 from .compat import (
-    ed25519, ed448, EDDSA_PRIVKEY_CLASSES,
-    EC_CURVES, PUBKEY_CLASSES, PRIVKEY_CLASSES,
+    EC_CURVES, EDDSA_PRIVKEY_CLASSES,
+    PRIVKEY_CLASSES, PUBKEY_CLASSES, ed448, ed25519,
 )
+from .exceptions import UnsupportedParameter
 
 __all__ = (
     "get_curve_for_name", "get_ec_curves", "get_hash_algo", "get_key_name",
@@ -213,3 +213,4 @@ def new_serial_number():
     seed = int.from_bytes(os.urandom(20), "big", signed=False)
     # avoid sign problems by setting highest bit
     return (seed >> 1) | (1 << 158)
+
