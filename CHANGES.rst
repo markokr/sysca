@@ -1,12 +1,15 @@
 Version history
 ===============
 
-dev
+2.1
 ---
 
 * [feature] ``autogen`` command to generate key and sign certificate based
   on config file.
 * [fix] Proper BrokenPipeError handling.
+* [cleanup] Drop SSH code, use cryptography API instead.
+* [cleanup] Drop support for cryptography < 2.8
+* [cleanup] Add typing.
 
 2.0
 ---
