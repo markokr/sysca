@@ -6,26 +6,15 @@ from cryptography.hazmat.primitives.serialization import (
     NoEncryption, PrivateFormat, PublicFormat,
 )
 
-try:
-    from cryptography.hazmat.primitives.serialization.ssh import (
-        load_ssh_private_key, load_ssh_public_key,
-    )
-    HAVE_SSH = True
-except ImportError:
-    HAVE_SSH = False
-
-    def load_ssh_public_key(data, backend=None):    # type: ignore
-        raise NotImplementedError
-
-    def load_ssh_private_key(data, password, backend=None):  # type: ignore
-        raise NotImplementedError
+from cryptography.hazmat.primitives.serialization.ssh import (
+    load_ssh_private_key, load_ssh_public_key,
+)
 
 __all__ = (
     "load_ssh_public_key",
     "load_ssh_private_key",
     "serialize_ssh_public_key",
     "serialize_ssh_private_key",
-    "HAVE_SSH",
 )
 
 

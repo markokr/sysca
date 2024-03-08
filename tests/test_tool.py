@@ -7,7 +7,6 @@ from cryptography.hazmat.backends import default_backend
 
 from sysca.tool import run_sysca
 from sysca.api import set_unsafe, CertInfo
-from sysca.ssh import HAVE_SSH
 
 from helpers import demo_fn, demo_raw, demo_data
 
@@ -259,14 +258,13 @@ def test_export(capsys):
     res = capsys.readouterr()
     assert " RSA PRIVATE " in res.out
 
-    if HAVE_SSH:
-        assert 0 == sysca("export", demo_fn("ec-p256.key"), "--outform=ssh")
-        res = capsys.readouterr()
-        assert " OPENSSH PRIVATE " in res.out
+    assert 0 == sysca("export", demo_fn("ec-p256.key"), "--outform=ssh")
+    res = capsys.readouterr()
+    assert " OPENSSH PRIVATE " in res.out
 
-        assert 0 == sysca("export", demo_fn("rsa1.key"), "--outform=ssh")
-        res = capsys.readouterr()
-        assert " OPENSSH PRIVATE " in res.out
+    assert 0 == sysca("export", demo_fn("rsa1.key"), "--outform=ssh")
+    res = capsys.readouterr()
+    assert " OPENSSH PRIVATE " in res.out
 
 
 def test_export_der(capsys, tmp_path):
@@ -301,10 +299,9 @@ def test_export_pub(capsys):
     res = capsys.readouterr()
     assert res.out == demo_data("ec-p256.pub", "r")
 
-    if HAVE_SSH:
-        assert 0 == sysca("export-pub", demo_fn("ec-p256.pub"), "--outform=ssh")
-        res = capsys.readouterr()
-        assert "ecdsa-sha2-nistp256" in res.out
+    assert 0 == sysca("export-pub", demo_fn("ec-p256.pub"), "--outform=ssh")
+    res = capsys.readouterr()
+    assert "ecdsa-sha2-nistp256" in res.out
 
     assert 0 == sysca("export-pub", demo_fn("ec-p256.key"))
     res = capsys.readouterr()

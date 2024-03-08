@@ -1,6 +1,6 @@
 
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 
 import pytest
 
@@ -107,7 +107,7 @@ def test_direct_items():
     key3, cert3 = new_cert(ca_key, ca_cert, subject={"CN": "CrlServer3"}, usage="server")
 
     crl = sysca.CRLInfo(crl_number=10)
-    crl.add_certificate(cert1, invalidity_date=datetime(2001, 10, 18, 21, 59, 59))
+    crl.add_certificate(cert1, invalidity_date=datetime(2001, 10, 18, 21, 59, 59, tzinfo=timezone.utc))
     crl.add_certificate(cert2, reason="key_compromise")
     crl.add_certificate(cert3, reason="unspecified")
 
@@ -162,7 +162,7 @@ def test_indirect_items():
     key7, cert7 = new_cert(ca_key, ca_cert, subject={"CN": "k7"})
 
     crl = sysca.CRLInfo(crl_number=10, indirect_crl=True)
-    crl.add_certificate(cert1, reason="remove_from_crl", invalidity_date=datetime(2001, 10, 18, 21, 59, 59))
+    crl.add_certificate(cert1, reason="remove_from_crl", invalidity_date=datetime(2001, 10, 18, 21, 59, 59, tzinfo=timezone.utc))
     crl.add_certificate(cert2, reason="ca_compromise")
     crl.add_certificate(cert3, reason="certificate_hold")
     crl.add_certificate(cert4, reason="privilege_withdrawn")
@@ -174,7 +174,7 @@ def test_indirect_items():
     crl2obj = sysca.create_x509_crl(ca_key, ca_cert, crlobj, 30)
     crl2 = sysca.CRLInfo(load=crl2obj)
     assert crl2.indirect_crl is True
-    assert crl2.revoked_list[0].invalidity_date == datetime(2001, 10, 18, 21, 59, 59)
+    assert crl2.revoked_list[0].invalidity_date == datetime(2001, 10, 18, 21, 59, 59, tzinfo=timezone.utc)
     assert crl2.revoked_list[0].serial_number == cert1.serial_number
     assert crl2.revoked_list[0].issuer_gnames == ["dn:/CN=IndirectCA/", "dn:/CN=IndAlt/"]
     assert crl2.revoked_list[1].serial_number == cert2.serial_number
