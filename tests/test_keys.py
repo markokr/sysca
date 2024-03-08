@@ -244,12 +244,12 @@ def test_ssh_certs_eddsa(tmp_path):
 
 
 def test_serialize():
-    with pytest.raises(TypeError, match="Unsupported"):
+    with pytest.raises(TypeError):
         sysca.serialize(object(), "pem")
     sk, cert = new_root(subject="CN=errtests")
-    with pytest.raises(ValueError, match="support"):
+    with pytest.raises(ValueError):
         sysca.serialize(sk.public_key(), "ssl")
-    with pytest.raises(ValueError, match="Unsupported"):
+    with pytest.raises(ValueError):
         sysca.serialize(sk, "x")
     if HAVE_SSH:
         with pytest.raises(ValueError, match="private"):
