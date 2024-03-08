@@ -45,7 +45,7 @@ def get_curve_for_name(name):
         raise UnsupportedParameter("Unknown curve: %s" % name)
     if not is_safe_curve(name2):
         raise UnsupportedParameter("Unsafe curve: %s" % name)
-    return EC_CURVES[name2]
+    return EC_CURVES[name2]()
 
 
 def same_pubkey(o1, o2):
