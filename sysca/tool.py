@@ -5,7 +5,7 @@ import argparse
 import os.path
 import subprocess
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 
 from cryptography import x509
 
@@ -16,6 +16,7 @@ from .api import (
     load_crl, load_file_any, load_key, load_password, load_req, new_key,
     parse_dn, parse_list, parse_number, render_name, render_serial,
     same_pubkey, serialize, set_unsafe, to_issuer_gnames,
+    get_utc_datetime,
 )
 
 __all__ = ("main", "run_sysca")
@@ -177,8 +178,8 @@ def do_sign(subject_csr, issuer_obj, issuer_key, days, path_length, reqInfo,
                             not_valid_before=not_valid_before,
                             not_valid_after=not_valid_after)
     msg("Serial: %s", render_serial(cert.serial_number))
-    msg("Not Valid Before: %s", cert.not_valid_before.isoformat(" "))
-    msg("Not Valid After: %s", cert.not_valid_after.isoformat(" "))
+    msg("Not Valid Before: %s", get_utc_datetime(cert, "not_valid_before").isoformat(" "))
+    msg("Not Valid After: %s", get_utc_datetime(cert, "not_valid_after").isoformat(" "))
     return cert
 
 
@@ -285,7 +286,7 @@ def update_crl_command(args):
     revocation_date = args.revocation_date
     if not revocation_date:
         # use same value for all new records
-        revocation_date = datetime.utcnow()
+        revocation_date = datetime.now(timezone.utc)
 
     if args.issuer_urls:
         crl_info.issuer_urls = parse_list(args.issuer_urls)

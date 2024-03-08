@@ -3,7 +3,8 @@
 
 # pylint: disable=import-outside-toplevel
 
-from typing import Tuple, Type, Union
+from typing import Tuple, Type, Union, Optional, Any
+from datetime import datetime, timezone
 
 from cryptography import x509
 from cryptography.hazmat.primitives.asymmetric import (
@@ -14,6 +15,7 @@ __all__ = (
     "X509_CLASSES", "PUBKEY_CLASSES", "PRIVKEY_CLASSES",
     "EDDSA_PRIVKEY_CLASSES", "EDDSA_PUBKEY_CLASSES",
     "EC_CURVES", "ed25519", "ed448",
+    "get_utc_datetime", "get_utc_datetime_opt",
 )
 
 
@@ -61,4 +63,20 @@ PUBKEY_TYPES = Union[
     x25519.X25519PublicKey, x448.X448PublicKey,
     dh.DHPublicKey,
 ]
+
+
+def get_utc_datetime_opt(obj: Any, field: str) -> Optional[datetime]:
+    field_utc = field + "_utc"
+    if hasattr(obj, field_utc):
+        return getattr(obj, field_utc)
+    dt = getattr(obj, field)
+    if dt is None:
+        return None
+    return dt.replace(tzinfo=timezone.utc)
+
+
+def get_utc_datetime(obj: Any, field: str) -> datetime:
+    dt = get_utc_datetime_opt(obj, field)
+    assert dt, "get_utc_datetime expects not-None"
+    return dt
 

@@ -6,7 +6,10 @@
 from . import FULL_VERSION
 from .autogen import autogen_config_file
 from .certinfo import CertInfo, create_x509_cert, create_x509_req
-from .compat import PRIVKEY_CLASSES, PUBKEY_CLASSES
+from .compat import (
+    PRIVKEY_CLASSES, PUBKEY_CLASSES,
+    get_utc_datetime, get_utc_datetime_opt,
+)
 from .crlinfo import CRL_REASON, CRLInfo, RevCertInfo, create_x509_crl
 from .exceptions import InvalidCertificate, UnsupportedParameter
 from .files import (
@@ -42,5 +45,6 @@ __all__ = (
     "serialize", "load_file_any",
     "as_bytes", "to_issuer_gnames",
     "autogen_config_file",
+    "get_utc_datetime", "get_utc_datetime_opt",
 )
 

@@ -1,7 +1,7 @@
 """Certificate Revocation List handling.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
@@ -9,6 +9,9 @@ from cryptography.x509.oid import (
     AuthorityInformationAccessOID, CRLEntryExtensionOID, ExtensionOID,
 )
 
+from .compat import (
+    get_utc_datetime, get_utc_datetime_opt,
+)
 from .certinfo import CertInfo
 from .exceptions import InvalidCertificate
 from .formats import (
@@ -63,7 +66,7 @@ class RevCertInfo:
         """Return x509.RevokedCertificate
         """
         if self.revocation_date is None:
-            self.revocation_date = datetime.utcnow()
+            self.revocation_date = datetime.now(timezone.utc)
 
         builder = x509.RevokedCertificateBuilder()
         builder = builder.serial_number(self.serial_number)
@@ -104,7 +107,7 @@ class RevCertInfo:
             raise InvalidCertificate("Expect RevokedCertificate, got %s" % type(obj))
 
         self.serial_number = obj.serial_number
-        self.revocation_date = obj.revocation_date
+        self.revocation_date = get_utc_datetime(obj, "revocation_date")
         self.reason = None
         self.invalidity_date = None
         self.issuer_gnames = None
@@ -114,7 +117,7 @@ class RevCertInfo:
             if ext.oid == CRLEntryExtensionOID.CRL_REASON:
                 self.reason = CRL_REASON_MAP.get(extobj.reason)
             elif ext.oid == CRLEntryExtensionOID.INVALIDITY_DATE:
-                self.invalidity_date = extobj.invalidity_date
+                self.invalidity_date = get_utc_datetime(extobj, "invalidity_date")
             elif ext.oid == CRLEntryExtensionOID.CERTIFICATE_ISSUER:
                 self.issuer_gnames = extract_gnames(extobj)
             else:
@@ -186,8 +189,8 @@ class CRLInfo:
         if not isinstance(obj, x509.CertificateRevocationList):
             raise TypeError("Expect CertificateRevocationList")
         self.issuer_name = extract_name(obj.issuer)
-        self.next_update = obj.next_update
-        self.last_update = obj.last_update
+        self.next_update = get_utc_datetime_opt(obj, "next_update")
+        self.last_update = get_utc_datetime(obj, "last_update")
 
         for ext in obj.extensions:
             extobj = ext.value

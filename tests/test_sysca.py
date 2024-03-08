@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -203,8 +203,8 @@ def test_autodetect():
 SAMPLE_SET_SERIAL = """\
 Version: 3
 Public key: ec:secp256r1
-Not Valid Before: 2010-06-22 14:00:59
-Not Valid After: 2050-01-03 14:00:59
+Not Valid Before: 2010-06-22 14:00:59+00:00
+Not Valid After: 2050-01-03 14:00:59+00:00
 Serial: 01:e2:40
 Subject: CN = set
 CA: True
@@ -221,14 +221,14 @@ def test_set_serial():
     cert = sysca.create_x509_cert(key, key.public_key(), info, info,
                                   serial_number="123456",
                                   not_valid_before="2010-06-22 14:00:59",
-                                  not_valid_after=datetime(2050, 1, 3, 14, 0, 59))
+                                  not_valid_after=datetime(2050, 1, 3, 14, 0, 59, tzinfo=timezone.utc))
     assert dump(cert) == SAMPLE_SET_SERIAL
 
 
 def test_parse_timestamp():
-    assert sysca.parse_timestamp("2005-01-02") == datetime(2005, 1, 2)
-    assert sysca.parse_timestamp("2005-01-02 11:22") == datetime(2005, 1, 2, 11, 22)
-    assert sysca.parse_timestamp("2005-01-02 11:22:33") == datetime(2005, 1, 2, 11, 22, 33)
+    assert sysca.parse_timestamp("2005-01-02") == datetime(2005, 1, 2, tzinfo=timezone.utc)
+    assert sysca.parse_timestamp("2005-01-02 11:22") == datetime(2005, 1, 2, 11, 22, tzinfo=timezone.utc)
+    assert sysca.parse_timestamp("2005-01-02 11:22:33") == datetime(2005, 1, 2, 11, 22, 33, tzinfo=timezone.utc)
 
     with pytest.raises(ValueError):
         sysca.parse_timestamp("")
@@ -245,7 +245,10 @@ def test_parse_time_period():
     d1, d2 = sysca.parse_time_period(not_valid_before="1989-01-01", not_valid_after="1995-01-01")
     assert d2 - d1 > timedelta(days=5 * 365)
 
-    d1, d2 = sysca.parse_time_period(not_valid_before=datetime(1989, 1, 1), not_valid_after=datetime(1995, 1, 1))
+    d1, d2 = sysca.parse_time_period(
+        not_valid_before=datetime(1989, 1, 1, tzinfo=timezone.utc),
+        not_valid_after=datetime(1995, 1, 1, tzinfo=timezone.utc),
+    )
     assert d2 - d1 > timedelta(days=5 * 365)
 
     with pytest.raises(ValueError, match="days"):

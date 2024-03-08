@@ -8,7 +8,10 @@ from cryptography.x509.oid import (
     ExtensionOID, ObjectIdentifier,
 )
 
-from .compat import PRIVKEY_CLASSES, PUBKEY_CLASSES
+from .compat import (
+    PRIVKEY_CLASSES, PUBKEY_CLASSES,
+    get_utc_datetime,
+)
 from .exceptions import InvalidCertificate
 from .formats import (
     maybe_parse, maybe_parse_str, parse_dn, parse_list, parse_number,
@@ -258,8 +261,8 @@ class CertInfo:
             else:
                 raise InvalidCertificate("Unsupported certificate version")
             self.issuer_name = extract_name(obj.issuer)
-            self.not_valid_before = obj.not_valid_before
-            self.not_valid_after = obj.not_valid_after
+            self.not_valid_before = get_utc_datetime(obj, "not_valid_before")
+            self.not_valid_after = get_utc_datetime(obj, "not_valid_after")
         elif isinstance(obj, x509.CertificateSigningRequest):
             self.version = None
             self.issuer_name = None

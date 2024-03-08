@@ -3,7 +3,7 @@
 
 import binascii
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import (
     Callable, Dict, Iterable, List, Match, Optional, Sequence, Union,
 )
@@ -61,14 +61,18 @@ def parse_timestamp(sval: str) -> datetime:
     """Parse date from command line.
     """
     if hasattr(datetime, "fromisoformat"):
-        return datetime.fromisoformat(sval)
-    if re.match(r"^\d\d\d\d-\d\d-\d\d$", sval):
-        return datetime.strptime(sval, "%Y-%m-%d")
-    if re.match(r"^\d\d\d\d-\d\d-\d\d \d\d:\d\d$", sval):
-        return datetime.strptime(sval, "%Y-%m-%d %H:%M")
-    if re.match(r"^\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d$", sval):
-        return datetime.strptime(sval, "%Y-%m-%d %H:%M:%S")
-    raise ValueError("Invalid timestamp: %r" % sval)
+        dt = datetime.fromisoformat(sval)
+        if dt.tzinfo is not None:
+            return dt.astimezone(timezone.utc)
+    elif re.match(r"^\d\d\d\d-\d\d-\d\d$", sval):
+        dt = datetime.strptime(sval, "%Y-%m-%d")
+    elif re.match(r"^\d\d\d\d-\d\d-\d\d \d\d:\d\d$", sval):
+        dt = datetime.strptime(sval, "%Y-%m-%d %H:%M")
+    elif re.match(r"^\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d$", sval):
+        dt = datetime.strptime(sval, "%Y-%m-%d %H:%M:%S")
+    else:
+        raise ValueError("Invalid timestamp: %r" % sval)
+    return dt.replace(tzinfo=timezone.utc)
 
 
 def _escape_char(m: Match[str]) -> str:
@@ -210,7 +214,7 @@ def parse_time_period(days=None, not_valid_before=None, not_valid_after=None, ga
     days = maybe_parse_str(days, parse_number, int)
     not_valid_before = maybe_parse_str(not_valid_before, parse_timestamp, datetime)
     not_valid_after = maybe_parse_str(not_valid_after, parse_timestamp, datetime)
-    dt_now = datetime.utcnow()
+    dt_now = datetime.now(timezone.utc)
     if not_valid_before is None:
         not_valid_before = dt_now - timedelta(hours=gap)
     if not_valid_after is None:

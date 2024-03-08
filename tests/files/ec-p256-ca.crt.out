@@ -1,7 +1,7 @@
 Version: 3
 Public key: ec:secp256r1
-Not Valid Before: 2010-01-01 00:00:00
-Not Valid After: 2050-01-01 00:00:00
+Not Valid Before: 2010-01-01 00:00:00+00:00
+Not Valid After: 2050-01-01 00:00:00+00:00
 Serial: 70:0a:49:4b:83:0c:6b:42:96:0f:3c:40:2c:c4:78:33:74:83:f3:2e
 Subject: CN = ecreq
 CA: True
