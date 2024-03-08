@@ -1,6 +1,14 @@
 Version history
 ===============
 
+2.2
+---
+
+* [feature] Switch to timezone-aware timestamps with UTC timezone.
+* [cleanup] Properly initialize EC curves to avoid warning.
+* [cleanup] Drop SSH+DSA tests due to deprecation warnings.
+* [cleanup] Drop support for cryptography < 3.0
+
 2.1
 ---
 

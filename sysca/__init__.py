@@ -3,7 +3,7 @@
 
 # pylint: disable=import-outside-toplevel
 
-__version__ = "2.1"
+__version__ = "2.2"
 
 
 def _version_info():
