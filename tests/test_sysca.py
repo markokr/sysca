@@ -134,8 +134,8 @@ def test_passthrough():
         issuer_urls=["http://issuer_urls"],
         crl_urls=["http://crl_urls"],
         delta_crl_urls=["http://delta_crl_urls"],
-        permit_subtrees=["dns:*.www.com"],
-        exclude_subtrees=["dns:*.www.net"],
+        permit_subtrees=["dns:www.com"],
+        exclude_subtrees=["dns:www.net"],
         certificate_policies=[
             "1.1.1",
             "1.1.2:|P=link|",
