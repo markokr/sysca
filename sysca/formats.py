@@ -171,7 +171,7 @@ def loop_escaped(val: str, c: str) -> Iterable[str]:
             continue
         m = rc.match(val, pos)
         if not m:
-            raise Exception("rx bug")
+            raise ValueError("rx bug")
         pos = m.end()
         yield unescape(m.group(0))
 

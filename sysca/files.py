@@ -37,7 +37,7 @@ def load_gpg_file(fn: str, check_ext: bool = True) -> bytes:
         out, err = p.communicate()
     log = err.decode("utf8", "replace").strip()
     if p.returncode != 0:
-        raise Exception("gpg failed: %s" % log)
+        raise subprocess.SubprocessError("gpg failed: %s" % log)
 
     # cannot say "you need to check signatures" to gpg...
     # if "Good signature" not in log:
