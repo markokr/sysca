@@ -23,6 +23,7 @@ setup(
     entry_points={
         "console_scripts": ["sysca=sysca.tool:main"],
     },
+    package_data={"sysca": ["py.typed"]},
     zip_safe=True,
     install_requires=["cryptography>=3.0"],
     keywords=["x509", "tls", "ssl", "certificate", "authority", "command-line", "server", "authentication"],
