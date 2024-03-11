@@ -1,16 +1,17 @@
 
-#import pytest
+from typing import Tuple
 
 from cryptography import x509
 from cryptography.hazmat.primitives.asymmetric import ec, rsa
+from helpers import demo_fn
 
 from sysca.api import autogen_config_file
 
-from helpers import demo_fn
+#import pytest
 
 
-def test_autogen():
-    def load_ca(name):
+def test_autogen() -> None:
+    def load_ca(name: str) -> Tuple[str, str]:
         assert name in ("CA1", "CA2")
         keyfn = demo_fn("ec-p256.key")
         crtfn = demo_fn("ec-p256-ca.crt")

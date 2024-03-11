@@ -2,7 +2,9 @@
 """
 
 import ipaddress
-from typing import Optional, Sequence
+from typing import (
+    Dict, List, Literal, Optional, Sequence, Tuple, Union, cast, overload,
+)
 
 from cryptography import x509
 from cryptography.hazmat.primitives.serialization import (
@@ -13,7 +15,11 @@ from cryptography.x509.oid import (
     AuthorityInformationAccessOID, NameOID, ObjectIdentifier,
 )
 
-from .compat import PRIVKEY_CLASSES, PUBKEY_CLASSES, X509_CLASSES
+from .compat import (
+    AllPrivateKeyClasses, AllPrivateKeyTypes, AllPublicKeyClasses,
+    AllPublicKeyTypes, GNameList, NameSeq, TypeAlias, X509Classes,
+    X509Types, valid_private_key, valid_public_key,
+)
 from .exceptions import InvalidCertificate
 from .formats import (
     as_password, list_escape, parse_dn, parse_list, render_name,
@@ -113,11 +119,11 @@ DN_OID_TO_CODE = {v: k for k, v in sorted(DN_CODE_TO_OID.items(), reverse=True)}
 #
 
 
-def extract_name(name: Optional[x509.Name]) -> Optional[Sequence[Sequence[str]]]:
+def extract_name(name: Optional[x509.Name]) -> NameSeq:
     """Convert Name object to shortcut-dict.
     """
     if name is None:
-        return None
+        return ()
     if not isinstance(name, x509.Name):
         raise TypeError("Expect x509.Name")
     rdns = []
@@ -133,15 +139,22 @@ def extract_name(name: Optional[x509.Name]) -> Optional[Sequence[Sequence[str]]]
     return tuple(rdns)
 
 
-def extract_gnames(ext_name_list):
+def extract_gnames(
+    ext_name_list: Optional[Union[
+        List[x509.GeneralName],
+        x509.CertificateIssuer,
+        x509.SubjectAlternativeName,
+        x509.IssuerAlternativeName
+    ]]
+) -> GNameList:
     """Convert list of GeneralNames to list of prefixed strings.
     """
     if ext_name_list is None:
-        return None
+        return []
     if not isinstance(ext_name_list, (list, x509.CertificateIssuer,
                                       x509.SubjectAlternativeName, x509.IssuerAlternativeName)):
         raise TypeError("unexpected type: %r" % ext_name_list)
-    res = []
+    res: List[str] = []
     for gn in ext_name_list:
         if isinstance(gn, x509.RFC822Name):
             res.append("email:" + gn.value)
@@ -156,13 +169,14 @@ def extract_gnames(ext_name_list):
                 res.append("ip:" + str(gn.value))
         elif isinstance(gn, x509.DirectoryName):
             val = extract_name(gn.value)
-            res.append("dn:" + render_name(val, "/"))
+            if val:
+                res.append("dn:" + render_name(val, "/"))
         else:
             raise InvalidCertificate("Unsupported subjectAltName type: %s" % (gn,))
     return res
 
 
-def extract_policy(pol):
+def extract_policy(pol: x509.PolicyInformation) -> str:
     """Convert PolicyInformation into string format used by --add-policy
     """
     if not isinstance(pol, x509.PolicyInformation):
@@ -187,19 +201,19 @@ def extract_policy(pol):
     return "%s:%s" % (pol_oid, ",".join(policy_qualifiers))
 
 
-def make_policy(txt):
+def make_policy(txt: str) -> x509.PolicyInformation:
     """Create PolicyInformation from --add-policy value
     """
     tmp = txt.split(":", 1)
     pol_oid = ObjectIdentifier(tmp[0])
-    quals = None
+    quals: List[Union[str, x509.UserNotice]] = []
     if len(tmp) > 1:
-        quals = []
         for elem in parse_list(tmp[1]):
-            d = dict(parse_dn(elem))
+            d: Dict[str, str] = dict((n[0], n[1]) for n in parse_dn(elem))
             klist = list(d.keys())
-            if d.get("P"):
-                quals.append(d.get("P"))
+            p_value = d.get("P")
+            if p_value:
+                quals.append(p_value)
                 if klist != ["P"]:
                     raise InvalidCertificate("Bad policy spec: P must be alone")
                 continue
@@ -210,19 +224,18 @@ def make_policy(txt):
             v_orgname = d.get("O", "")
             v_text = d.get("T")
             ref = None
-            nums = None
+            nums = []
             if v_noticeref:
                 nums = [int(n) for n in v_noticeref.split(":")]
             if v_orgname or nums:
-                ref = x509.NoticeReference(v_orgname, nums or [])
+                ref = x509.NoticeReference(v_orgname, nums)
             quals.append(x509.UserNotice(ref, v_text))
-    return x509.PolicyInformation(pol_oid, quals)
+    return x509.PolicyInformation(pol_oid, quals or None)
 
 
-def make_name(name_att_list):
+def make_name(name_att_list: Sequence[Sequence[str]]) -> x509.Name:
     """Create Name object from list of tuples.
     """
-
     rdnlist = []
     for rdn in name_att_list:
         attlist = []
@@ -240,7 +253,7 @@ def make_name(name_att_list):
     return x509.Name(rdnlist)
 
 
-def make_gnames(gname_list):
+def make_gnames(gname_list: Sequence[str]) -> List[x509.GeneralName]:
     """Converts list of prefixed strings to GeneralName list.
     """
     gnames = []
@@ -250,6 +263,7 @@ def make_gnames(gname_list):
         t, val = alt.split(":", 1)
         t = t.lower().strip()
         val = val.strip()
+        gn: x509.GeneralName
         if t == "dn":
             gn = x509.DirectoryName(make_name(parse_dn(val)))
         elif t == "dns":
@@ -274,9 +288,17 @@ def make_gnames(gname_list):
     return gnames
 
 
-def make_key_usage(digital_signature=False, content_commitment=False, key_encipherment=False,
-                   data_encipherment=False, key_agreement=False, key_cert_sign=False,
-                   crl_sign=False, encipher_only=False, decipher_only=False):
+def make_key_usage(
+    digital_signature: bool = False,
+    content_commitment: bool = False,
+    key_encipherment: bool = False,
+    data_encipherment: bool = False,
+    key_agreement: bool = False,
+    key_cert_sign: bool = False,
+    crl_sign: bool = False,
+    encipher_only: bool = False,
+    decipher_only: bool = False,
+) -> x509.KeyUsage:
     """Default arguments for KeyUsage.
     """
     return x509.KeyUsage(digital_signature=digital_signature, content_commitment=content_commitment,
@@ -295,7 +317,7 @@ _X509_FORMATS = {
 _PUB_FORMATS = {
     "der": (Encoding.DER, PublicFormat.SubjectPublicKeyInfo),
     "pem": (Encoding.PEM, PublicFormat.SubjectPublicKeyInfo),
-    "raw": (getattr(Encoding, "Raw", "raw"), getattr(PublicFormat, "Raw", "raw")),
+    "raw": (Encoding.Raw, PublicFormat.Raw),
     "ssh": (Encoding.OpenSSH, PublicFormat.OpenSSH),
     "ssl": (Encoding.PEM, PublicFormat.PKCS1),
 }
@@ -304,13 +326,30 @@ _PUB_FORMATS = {
 _PRIV_FORMATS = {
     "der": (Encoding.DER, PrivateFormat.PKCS8),
     "pem": (Encoding.PEM, PrivateFormat.PKCS8),
-    "raw": (getattr(Encoding, "Raw", "raw"), getattr(PrivateFormat, "Raw", "raw")),
-    "ssh": (Encoding.PEM, "ssh"),
+    "raw": (Encoding.Raw, PrivateFormat.Raw),
+    "ssh": (Encoding.PEM, PrivateFormat.OpenSSH),
     "ssl": (Encoding.PEM, PrivateFormat.TraditionalOpenSSL),
 }
 
+SerializeObj: TypeAlias = Union[AllPublicKeyTypes, AllPrivateKeyTypes, X509Types]
+SerializePsw: TypeAlias = Optional[Union[str, bytes]]
+SerializeBinEncoding = Literal["der", "raw"]
+SerializeStrEncoding = Literal["pem", "ssh", "ssl"]
+SerializeEncoding = Union[SerializeBinEncoding, SerializeStrEncoding]
 
-def serialize(obj, encoding="pem", password=None):
+
+@overload
+def serialize(obj: SerializeObj, encoding: SerializeStrEncoding = "pem",
+              password: SerializePsw = None) -> str: ...
+
+
+@overload
+def serialize(obj: SerializeObj, encoding: SerializeBinEncoding,
+              password: SerializePsw = None) -> bytes: ...
+
+
+def serialize(obj: SerializeObj, encoding: SerializeEncoding = "pem",
+              password: SerializePsw = None) -> Union[str, bytes]:
     """Returns standard serialization for object.
 
     Supports: certificate, certificate request, CRL, public and private keys.
@@ -336,54 +375,60 @@ def serialize(obj, encoding="pem", password=None):
     Returns string value for textual formats (pem,ssh,ssl), bytes for binary formats (der,raw).
     """
     password = as_password(password)
-    res = None
+    res: Optional[bytes] = None
     if encoding not in ("pem", "der", "ssh", "ssl", "raw"):
         raise ValueError("Unsupported encoding: %s" % encoding)
-    if isinstance(obj, PRIVKEY_CLASSES):
+    if isinstance(obj, AllPrivateKeyClasses):
+        priv = valid_private_key(obj)
         if encoding == "ssh":
-            res = serialize_ssh_private_key(obj, password)
+            res = serialize_ssh_private_key(priv, password)
         else:
-            enc, fmt = _PRIV_FORMATS[encoding]
-            hide = NoEncryption()
+            enc, pubfmt = _PRIV_FORMATS[encoding]
+            hide: Union[NoEncryption, BestAvailableEncryption] = NoEncryption()
             if password:
                 if encoding == "raw":
                     raise ValueError("Raw format does not support password")
                 hide = BestAvailableEncryption(password)
-            res = obj.private_bytes(enc, fmt, hide)
+            res = priv.private_bytes(enc, pubfmt, hide)
     elif password is not None:
         raise ValueError("Only private keys can have password protection")
-    elif isinstance(obj, PUBKEY_CLASSES):
+    elif isinstance(obj, AllPublicKeyClasses):
+        pub = valid_public_key(obj)
         if encoding == "ssh":
-            res = serialize_ssh_public_key(obj)
+            res = serialize_ssh_public_key(pub)
         else:
-            enc, fmt = _PUB_FORMATS[encoding]
-            res = obj.public_bytes(enc, fmt)
-    elif isinstance(obj, X509_CLASSES):
+            enc, privfmt = _PUB_FORMATS[encoding]
+            res = pub.public_bytes(enc, privfmt)
+    elif isinstance(obj, X509Classes):
         if encoding not in _X509_FORMATS:
             raise ValueError("Encoding %s is for public/private keys" % encoding)
-        res = obj.public_bytes(_X509_FORMATS[encoding])
+        xobj = cast(X509Types, obj)
+        res = xobj.public_bytes(_X509_FORMATS[encoding])
     else:
         raise TypeError("Unsupported type for serialize(): %r" % obj)
 
     if encoding in ("pem", "ssh", "ssl"):
-        txt = res.decode("utf8")
-        if txt[-1] != "\n":
-            return txt + "\n"
+        txt: str = res.decode("utf8") if res else ""
+        if txt and txt[-1] != "\n":
+            txt += "\n"
         return txt
+    assert isinstance(res, bytes)
     return res
 
 
-def convert_urls_to_gnames(url_list):
+def convert_urls_to_gnames(url_list: Sequence[str]) -> List[x509.GeneralName]:
     """Return urls as GeneralNames
     """
     urls = ["uri:" + u for u in url_list]
     return make_gnames(urls)
 
 
-def extract_distribution_point_urls(extobj):
+def extract_distribution_point_urls(
+    extobj: Union[x509.CRLDistributionPoints, x509.FreshestCRL]
+) -> List[str]:
     if not isinstance(extobj, (x509.CRLDistributionPoints, x509.FreshestCRL)):
         raise TypeError("Expect CRLDistributionPoints or FreshestCRL")
-    urls = []
+    urls: List[str] = []
     for dp in extobj:
         if dp.relative_name:
             raise InvalidCertificate("DistributionPoint.relative_name not supported")
@@ -400,8 +445,8 @@ def extract_distribution_point_urls(extobj):
     return urls
 
 
-def extract_auth_access(extobj):
-    if not isinstance(extobj, (x509.AuthorityInformationAccess)):
+def extract_auth_access(extobj: x509.AuthorityInformationAccess) -> Tuple[List[str], List[str]]:
+    if not isinstance(extobj, x509.AuthorityInformationAccess):
         raise TypeError("Unexpected type: %r" % extobj)
     issuer_urls, ocsp_urls = [], []
     for ad in extobj:

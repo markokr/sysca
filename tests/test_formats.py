@@ -1,10 +1,10 @@
 
-from sysca.formats import ldap_to_string, ldap_from_string
-
 import pytest
 
+from sysca.formats import ldap_from_string, ldap_to_string
 
-def test_ldap_to_string():
+
+def test_ldap_to_string() -> None:
     assert ldap_to_string([("C", "QQ")]) == "C = QQ"
     assert ldap_to_string((("C", "QQ"), ("O", "org"))) == "C = QQ, O = org"
     assert ldap_to_string([("C", "QQ", "O", "org")]) == "C = QQ + O = org"
@@ -32,7 +32,7 @@ def test_ldap_to_string():
         ldap_to_string([], "+")
 
 
-def test_ldap_from_string():
+def test_ldap_from_string() -> None:
     assert ldap_from_string("C=QQ") == (("C", "QQ"),)
     assert ldap_from_string("C=QQ,O=o+OU=z") == (("C", "QQ"), ("O", "o", "OU", "z"))
     assert ldap_from_string(" C = QQ , O = o + OU = z ") == (("C", "QQ"), ("O", "o", "OU", "z"))
@@ -64,3 +64,4 @@ def test_ldap_from_string():
         ldap_from_string("=z")
     with pytest.raises(ValueError):
         ldap_from_string(" = z")
+

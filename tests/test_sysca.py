@@ -1,23 +1,24 @@
 from datetime import datetime, timedelta, timezone
+from typing import List, Tuple, Union
 
 import pytest
+from cryptography import x509
+from helpers import demo_bytes, demo_data, demo_fn, new_root
 
 import sysca.api as sysca
-
-from sysca.files import autodetect_data, autodetect_filename, autodetect_file
-
-from helpers import demo_fn, demo_data, new_root
+from sysca.files import autodetect_data, autodetect_file, autodetect_filename
 
 
-def dump(obj):
+def dump(obj: Union[x509.Certificate, x509.CertificateSigningRequest,
+         sysca.CertInfo, sysca.SubjectPublicKeyTypes]) -> str:
     if not isinstance(obj, sysca.CertInfo):
         obj = sysca.CertInfo(load=obj)
-    lst = []
+    lst: List[str] = []
     obj.show(lst.append)
     return "\n".join(lst) + "\n"
 
 
-def test_sysca():
+def test_sysca() -> None:
     # create ca key and cert
     ca_key, ca_certobj = new_root(subject={"CN": "TestCA"})
     ca_cert = sysca.CertInfo(load=ca_certobj)
@@ -30,12 +31,13 @@ def test_sysca():
 
     # ca signs
     srv_info2 = sysca.CertInfo(load=srv_req)
-    srv_certobj = sysca.create_x509_cert(ca_key, srv_req.public_key(), srv_info2, ca_cert, 365)
+    srv_pubkey = srv_req.public_key()
+    srv_certobj = sysca.create_x509_cert(ca_key, srv_pubkey, srv_info2, ca_cert, 365)
     srv_cert = sysca.CertInfo(load=srv_certobj)
     assert not srv_cert.ca
 
 
-def test_same_pubkey():
+def test_same_pubkey() -> None:
     k1 = sysca.new_ec_key()
     k2 = sysca.new_ec_key()
     k3 = sysca.new_rsa_key()
@@ -50,8 +52,8 @@ def test_same_pubkey():
     assert not sysca.same_pubkey(k3, k4)
 
 
-def test_render_name():
-    d = (("CN", "name"), ("O", "org"))
+def test_render_name() -> None:
+    d: Tuple[Tuple[str, str], ...] = (("CN", "name"), ("O", "org"))
     assert sysca.render_name(d, "/") == "/CN=name/O=org/"
     assert sysca.parse_dn(r"/ CN =name / / O = \6Frg ") == d
 
@@ -68,7 +70,7 @@ def test_render_name():
     assert w == r"/CN=na,\/\\/O=o\00\09/"
 
 
-def test_passthrough():
+def test_passthrough() -> None:
     key = sysca.new_rsa_key()
     info = sysca.CertInfo(
         subject={
@@ -154,8 +156,8 @@ def test_passthrough():
     assert info2.ocsp_must_staple and info2.ocsp_must_staple_v2
     assert info2.ca and info2.ocsp_nocheck
 
-    lst1 = []
-    lst2 = []
+    lst1: List[str] = []
+    lst2: List[str] = []
     info.show(lst1.append)
     info2.show(lst2.append)
     lst2 = [ln for ln in lst2 if not (
@@ -164,18 +166,18 @@ def test_passthrough():
     assert lst1 == lst2
 
 
-def test_file_show():
+def test_file_show() -> None:
     certs = (
         "letsencrypt-org.crt", "letsencrypt-x3.crt",
         "ec-p256-ca.crt",
     )
     for fn in certs:
         cert = sysca.load_cert(demo_fn(fn))
-        out = demo_data(fn + ".out", "r")
+        out = demo_data(fn + ".out")
         assert dump(cert) == out
 
 
-def test_autodetect():
+def test_autodetect() -> None:
     ftypes = (
         ("ec-p256-ca.crt", "crt"),
         ("ec-p256-ca.csr", "csr"),
@@ -186,7 +188,7 @@ def test_autodetect():
         ("password.txt", None),
     )
     for fn, t in ftypes:
-        assert autodetect_data(demo_data(fn)) == t
+        assert autodetect_data(demo_bytes(fn)) == t
         assert autodetect_filename(demo_fn(fn)) == t
         assert autodetect_file(demo_fn(fn)) == t
 
@@ -215,8 +217,8 @@ Issuer Name: CN = set
 """
 
 
-def test_set_serial():
-    key = sysca.load_key(demo_fn("ec-p256.key"))
+def test_set_serial() -> None:
+    key = sysca.valid_issuer_private_key(sysca.load_key(demo_fn("ec-p256.key")))
     info = sysca.CertInfo(subject="CN=set", ca=True, load=key)
     cert = sysca.create_x509_cert(key, key.public_key(), info, info,
                                   serial_number="123456",
@@ -225,7 +227,7 @@ def test_set_serial():
     assert dump(cert) == SAMPLE_SET_SERIAL
 
 
-def test_parse_timestamp():
+def test_parse_timestamp() -> None:
     assert sysca.parse_timestamp("2005-01-02") == datetime(2005, 1, 2, tzinfo=timezone.utc)
     assert sysca.parse_timestamp("2005-01-02 11:22") == datetime(2005, 1, 2, 11, 22, tzinfo=timezone.utc)
     assert sysca.parse_timestamp("2005-01-02 11:22:33") == datetime(2005, 1, 2, 11, 22, 33, tzinfo=timezone.utc)
@@ -234,7 +236,7 @@ def test_parse_timestamp():
         sysca.parse_timestamp("")
 
 
-def test_parse_time_period():
+def test_parse_time_period() -> None:
     d1, d2 = sysca.parse_time_period("300")
     assert d2 - d1 > timedelta(days=290)
     assert d2 - d1 < timedelta(days=310)
@@ -258,10 +260,10 @@ def test_parse_time_period():
         sysca.parse_time_period(not_valid_before="2001-01-01", not_valid_after="2000-01-01")
 
     with pytest.raises(ValueError):
-        sysca.parse_time_period(not_valid_before="2", not_valid_after=3)
+        sysca.parse_time_period(not_valid_before="2", not_valid_after=3)  # type: ignore[arg-type]
 
 
-def test_parse_number():
+def test_parse_number() -> None:
     assert sysca.parse_number("123456") == 123456
     assert sysca.parse_number("11:22:33") == 0x112233
     assert sysca.parse_number("11-22-33") == 0x112233
@@ -270,6 +272,7 @@ def test_parse_number():
         sysca.parse_number("")
 
 
-def test_load_pass():
+def test_load_pass() -> None:
     assert sysca.load_password(demo_fn("password.txt")) == b"password1"
     assert sysca.load_password(None) is None
+

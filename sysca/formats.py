@@ -5,12 +5,19 @@ import binascii
 import re
 from datetime import datetime, timedelta, timezone
 from typing import (
-    Callable, Dict, Iterable, List, Match, Optional, Sequence, Union,
+    Callable, Iterable, List, Match, Optional,
+    Sequence, Tuple, Union, overload,
+)
+
+from .compat import (
+    GNameList, MaybeList, MaybeName, MaybeNumber, MaybeTimestamp, NameSeq,
 )
 
 __all__ = (
     "as_bytes", "as_password",
-    "maybe_parse_str", "maybe_parse",
+    #"maybe_parse_str", "maybe_parse",
+    "maybe_parse_list",
+    "maybe_parse_timestamp",
     "parse_dn", "parse_list", "parse_number", "parse_timestamp",
     "parse_time_period",
     "render_name", "render_serial",
@@ -90,7 +97,7 @@ def list_escape(s: str) -> str:
     return re.sub(r"[\\,]", _escape_char, s)
 
 
-def show_list(desc: str, lst: List[str], writeln: Callable[[str], None]) -> None:
+def show_list(desc: str, lst: Optional[Sequence[str]], writeln: Callable[[str], None]) -> None:
     """Print out list field.
     """
     if not lst:
@@ -136,30 +143,58 @@ def render_name(name_att_list: Iterable[Sequence[str]], sep: str = ",") -> str:
     return ldap_to_string(name_att_list, sep)
 
 
-def maybe_parse(val: Optional[Union[str, bytes, Dict[str, str], Sequence[str]]], parse_func):
-    """Parse argument value with function if string.
-    """
+@overload
+def maybe_parse_timestamp(val: MaybeTimestamp) -> datetime: ...
+@overload
+def maybe_parse_timestamp(val: Optional[MaybeTimestamp]) -> Optional[datetime]: ...
+
+
+def maybe_parse_timestamp(val: Optional[MaybeTimestamp]) -> Optional[datetime]:
+    if val is None:
+        return None
+    if isinstance(val, datetime):
+        return val
+    if isinstance(val, str):
+        return parse_timestamp(val)
+    raise TypeError("expected str or timestamp")
+
+
+def maybe_parse_list(val: Optional[MaybeList]) -> List[str]:
     if val is None:
         return []
-    if isinstance(val, (bytes, str)):
-        return parse_func(val)
-    if isinstance(val, dict):
-        return list(val.items())
+    if isinstance(val, str):
+        return parse_list(val)
     if isinstance(val, (list, tuple)):
         return list(val)
-    return val
+    raise TypeError("expected str or list[str]")
 
 
-def maybe_parse_str(val, parse_func, vtype):
-    """Parse argument value with function if string.
-    """
+@overload
+def maybe_parse_number(val: MaybeNumber) -> int: ...
+@overload
+def maybe_parse_number(val: Optional[MaybeNumber]) -> Optional[int]: ...
+
+
+def maybe_parse_number(val: Optional[MaybeNumber]) -> Optional[int]:
     if val is None:
         return None
     if isinstance(val, str):
-        val = parse_func(val)
-    if not isinstance(val, vtype):
-        raise TypeError("expect %s for %s" % (vtype, type(val)))
-    return val
+        return int(val)
+    if isinstance(val, int):
+        return val
+    raise TypeError("expected str or int")
+
+
+def maybe_parse_dn(val: Optional[MaybeName]) -> NameSeq:
+    if val is None:
+        return ()
+    if isinstance(val, str):
+        return parse_dn(val)
+    if isinstance(val, dict):
+        return tuple(val.items())
+    if isinstance(val, tuple):
+        return val
+    raise TypeError("expected str, dict or tuple")
 
 
 def loop_escaped(val: str, c: str) -> Iterable[str]:
@@ -191,16 +226,16 @@ def parse_list(slist: str) -> List[str]:
     return res
 
 
-def parse_dn(dnstr: str):
+def parse_dn(dnstr: str) -> NameSeq:
     """Parse openssl-style /-separated list to dict.
     """
     return ldap_from_string(dnstr)
 
 
-def to_issuer_gnames(subject, san):
+def to_issuer_gnames(subject: Optional[NameSeq], san: Optional[GNameList]) -> GNameList:
     """Issuer GeneralNames for CRL usage.
     """
-    gnames = []
+    gnames: List[str] = []
     if subject:
         gnames.append("dn:" + render_name(subject, "/"))
     if san:
@@ -208,22 +243,29 @@ def to_issuer_gnames(subject, san):
     return gnames
 
 
-def parse_time_period(days=None, not_valid_before=None, not_valid_after=None, gap=1):
+def parse_time_period(
+    days: Optional[Union[str, int]] = None,
+    not_valid_before: Optional[MaybeTimestamp] = None,
+    not_valid_after: Optional[MaybeTimestamp] = None,
+    gap: int = 1,
+) -> Tuple[datetime, datetime]:
     """Calculate time range
     """
-    days = maybe_parse_str(days, parse_number, int)
-    not_valid_before = maybe_parse_str(not_valid_before, parse_timestamp, datetime)
-    not_valid_after = maybe_parse_str(not_valid_after, parse_timestamp, datetime)
+    days = maybe_parse_number(days)
     dt_now = datetime.now(timezone.utc)
     if not_valid_before is None:
-        not_valid_before = dt_now - timedelta(hours=gap)
+        dt_not_valid_before = dt_now - timedelta(hours=gap)
+    else:
+        dt_not_valid_before = maybe_parse_timestamp(not_valid_before)
     if not_valid_after is None:
         if days is None:
             raise ValueError("need days")
-        not_valid_after = dt_now + timedelta(days=days)
-    if not_valid_before > not_valid_after:
+        dt_not_valid_after = dt_now + timedelta(days=days)
+    else:
+        dt_not_valid_after = maybe_parse_timestamp(not_valid_after)
+    if dt_not_valid_before > dt_not_valid_after:
         raise ValueError("negative time range")
-    return not_valid_before, not_valid_after
+    return dt_not_valid_before, dt_not_valid_after
 
 
 #
@@ -270,7 +312,7 @@ def _ldap_unescape(val: List[str]) -> str:
     return _ldap_unescape_rc.sub(_ldap_unescape_fn, s)
 
 
-def ldap_to_string(mv_rdn: Iterable[Sequence[str]], rdnsep=","):
+def ldap_to_string(mv_rdn: Iterable[Sequence[str]], rdnsep: str = ",") -> str:
     """Render RDN list using format from RFC4514.
     """
     if rdnsep not in _ldap_allow_sep:
@@ -293,7 +335,7 @@ def ldap_to_string(mv_rdn: Iterable[Sequence[str]], rdnsep=","):
     return "%s%s%s" % (rdnsep, "".join(res), rdnsep)
 
 
-def ldap_from_string(val: str) -> Sequence[Sequence[str]]:
+def ldap_from_string(val: str) -> NameSeq:
     """Parse RDN list using format from RFC4514.
     """
     sep = ","

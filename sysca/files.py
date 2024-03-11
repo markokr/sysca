@@ -13,7 +13,7 @@ from cryptography.hazmat.primitives.serialization import (
     load_pem_private_key, load_pem_public_key,
 )
 
-from .compat import PRIVKEY_TYPES, PUBKEY_TYPES
+from .compat import AllPrivateKeyTypes, AllPublicKeyTypes
 from .formats import as_password
 from .ssh import load_ssh_private_key, load_ssh_public_key
 
@@ -48,7 +48,7 @@ def load_gpg_file(fn: str, check_ext: bool = True) -> bytes:
     return out
 
 
-def load_password(fn: str) -> Optional[bytes]:
+def load_password(fn: Optional[str]) -> Optional[bytes]:
     """Read password from potentially gpg-encrypted file.
     """
     if not fn:
@@ -56,28 +56,30 @@ def load_password(fn: str) -> Optional[bytes]:
     return load_gpg_file(fn).strip(b"\r\n")
 
 
-def load_key(fn: str, psw: Optional[bytes] = None) -> PRIVKEY_TYPES:
+def load_key(fn: str, psw: Optional[Union[str, bytes]] = None) -> AllPrivateKeyTypes:
     """Read private key, decrypt if needed.
     """
+    bpsw: Optional[bytes] = None
     if psw:
-        if not isinstance(psw, bytes):
-            psw = psw.encode("utf8")
+        bpsw = psw.encode("utf8") if isinstance(psw, str) else psw
     data = load_gpg_file(fn)
     if is_pem_data(data):
-        key = load_pem_private_key(data, password=psw, backend=default_backend())
+        key = load_pem_private_key(data, password=bpsw, backend=default_backend())
     else:
-        key = load_der_private_key(data, password=psw, backend=default_backend())
+        key = load_der_private_key(data, password=bpsw, backend=default_backend())
     return key
 
 
-def load_pub_key(fn: str) -> PUBKEY_TYPES:
+def load_pub_key(fn: str) -> AllPublicKeyTypes:
     """Read public key file.
     """
     with open(fn, "rb") as f:
         data = f.read()
     if is_pem_data(data):
-        return load_pem_public_key(data, default_backend())
-    return load_der_public_key(data, default_backend())
+        key = load_pem_public_key(data, default_backend())
+    else:
+        key = load_der_public_key(data, default_backend())
+    return key
 
 
 def load_req(fn: str) -> x509.CertificateSigningRequest:
@@ -216,8 +218,8 @@ def load_file_any(fn: str, password: Optional[Union[str, bytes]] = None) -> Opti
     x509.CertificateSigningRequest,
     x509.CertificateRevocationList,
     x509.Certificate,
-    PUBKEY_TYPES,
-    PRIVKEY_TYPES,
+    AllPublicKeyTypes,
+    AllPrivateKeyTypes,
 ]]:
     """Load any format supported
     """
@@ -241,8 +243,10 @@ def load_file_any(fn: str, password: Optional[Union[str, bytes]] = None) -> Opti
         return x509.load_der_x509_crl(data, default_backend())
     elif fmt == "pub":
         if is_pem_data(data):
-            return load_pem_public_key(data, default_backend())
-        return load_der_public_key(data, default_backend())
+            pub = load_pem_public_key(data, default_backend())
+        else:
+            pub = load_der_public_key(data, default_backend())
+        return pub
     elif fmt == "key":
         return load_key(fn, password)
     elif fmt == "key-ssh":

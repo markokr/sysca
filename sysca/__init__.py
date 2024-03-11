@@ -6,7 +6,7 @@
 __version__ = "2.2"
 
 
-def _version_info():
+def _version_info() -> str:
     """Info string for --version.
     """
     try:

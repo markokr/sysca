@@ -1,34 +1,33 @@
 
 import re
 from datetime import datetime, timezone
+from typing import List, Union
 
 import pytest
+from cryptography import x509
+from helpers import new_cert, new_root
 
 import sysca.api as sysca
-
-from cryptography import x509
-
-from helpers import new_root, new_cert
 
 HAS_DPOINT = hasattr(x509, "IssuingDistributionPoint")
 
 
-def zfilter(ln):
+def zfilter(ln: str) -> str:
     ln = re.sub(r"\d\d\d\d-\d\d-\d\d.*", "DT", ln)
     ln = re.sub(r"Serial: .*", "Serial: SN", ln)
     ln = re.sub(r"Authority Key Identifier: .*", "Authority Key Identifier: KeyID", ln)
     return ln
 
 
-def dump_crl(crl):
+def dump_crl(crl: Union[sysca.CRLInfo, x509.CertificateRevocationList]) -> List[str]:
     if not isinstance(crl, sysca.CRLInfo):
         crl = sysca.CRLInfo(load=crl)
-    lst = []
+    lst: List[str] = []
     crl.show(lst.append)
     return [zfilter(e) for e in lst]
 
 
-def test_crl_delta():
+def test_crl_delta() -> None:
     ca_key, ca_cert = new_root(subject="CN=CrlCA")
 
     crl = sysca.CRLInfo(delta_crl_urls=["test"], crl_number=1, delta_crl_number=2)
@@ -50,21 +49,21 @@ def test_crl_delta():
     ]
 
 
-def test_api_errors():
+def test_api_errors() -> None:
     ca_key, ca_cert = new_root(subject="/CN=CrlCA/")
 
     crl = sysca.CRLInfo(crl_number=1)
     with pytest.raises(TypeError):
-        sysca.create_x509_crl({}, ca_cert, crl, 30)
+        sysca.create_x509_crl({}, ca_cert, crl, 30)  # type: ignore[arg-type]
     with pytest.raises(TypeError):
-        sysca.create_x509_crl(ca_key, {}, crl, 30)
+        sysca.create_x509_crl(ca_key, {}, crl, 30)  # type: ignore[arg-type]
     with pytest.raises(TypeError):
-        sysca.create_x509_crl(ca_key, ca_cert, {}, 30)
+        sysca.create_x509_crl(ca_key, ca_cert, {}, 30)  # type: ignore[arg-type]
     with pytest.raises(TypeError):
-        crl.add_certificate({})
+        crl.add_certificate({})  # type: ignore[arg-type]
 
 
-def test_crl_passthrough():
+def test_crl_passthrough() -> None:
     # create ca key and cert
     ca_key, ca_cert = new_root(subject="CN=CrlCA", alt_names=["dn:/CN=CaCrl/"])
 
@@ -74,6 +73,7 @@ def test_crl_passthrough():
     crl = sysca.CRLInfo()
     crl.crl_number = 10
     crl.issuer_urls.append("http://issuer_urls")
+    crl.ocsp_urls.append("http://ocsp_urls")
     crl.delta_crl_urls.append("http://freshest_urls")
 
     crlobj = sysca.create_x509_crl(ca_key, ca_cert, crl, 30)
@@ -94,11 +94,12 @@ def test_crl_passthrough():
         "Last update: DT",
         "Next update: DT",
         "Issuer URLs: http://issuer_urls",
+        "OCSP URLs: http://ocsp_urls",
         "Delta CRL URLs: http://freshest_urls",
     ]
 
 
-def test_direct_items():
+def test_direct_items() -> None:
     # create ca key and cert
     ca_key, ca_cert = new_root(subject="CN=DirectCrlCA")
 
@@ -143,7 +144,7 @@ def test_direct_items():
     ]
 
 
-def test_indirect_items():
+def test_indirect_items() -> None:
     if not HAS_DPOINT:
         return
     # create ca key and cert
@@ -162,7 +163,8 @@ def test_indirect_items():
     key7, cert7 = new_cert(ca_key, ca_cert, subject={"CN": "k7"})
 
     crl = sysca.CRLInfo(crl_number=10, indirect_crl=True)
-    crl.add_certificate(cert1, reason="remove_from_crl", invalidity_date=datetime(2001, 10, 18, 21, 59, 59, tzinfo=timezone.utc))
+    idate = datetime(2001, 10, 18, 21, 59, 59, tzinfo=timezone.utc)
+    crl.add_certificate(cert1, reason="remove_from_crl", invalidity_date=idate)
     crl.add_certificate(cert2, reason="ca_compromise")
     crl.add_certificate(cert3, reason="certificate_hold")
     crl.add_certificate(cert4, reason="privilege_withdrawn")
@@ -174,7 +176,7 @@ def test_indirect_items():
     crl2obj = sysca.create_x509_crl(ca_key, ca_cert, crlobj, 30)
     crl2 = sysca.CRLInfo(load=crl2obj)
     assert crl2.indirect_crl is True
-    assert crl2.revoked_list[0].invalidity_date == datetime(2001, 10, 18, 21, 59, 59, tzinfo=timezone.utc)
+    assert crl2.revoked_list[0].invalidity_date == idate
     assert crl2.revoked_list[0].serial_number == cert1.serial_number
     assert crl2.revoked_list[0].issuer_gnames == ["dn:/CN=IndirectCA/", "dn:/CN=IndAlt/"]
     assert crl2.revoked_list[1].serial_number == cert2.serial_number
@@ -191,17 +193,18 @@ def test_indirect_items():
     assert crl2.revoked_list[6].issuer_gnames == ["dn:/CN=IndirectCA/", "dn:/CN=IndAlt/"]
 
 
-def test_scope_items():
+def test_scope_items() -> None:
     if not HAS_DPOINT:
         return
     # create ca key and cert
     ca_key, ca_cert = new_root(subject="CN=IndirectCA", alt_names="dn:CN=IndAlt")
 
-    crl = sysca.CRLInfo(crl_number=10, crl_scope="x")
+    crl = sysca.CRLInfo(crl_number=10, crl_scope="x")  # type: ignore[arg-type]
     with pytest.raises(ValueError):
         sysca.create_x509_crl(ca_key, ca_cert, crl, 30)
 
-    for scope in ["ca", "user", "attr", "all"]:
+    scopes: List[sysca.CRLScope] = ["ca", "user", "attr", "all"]
+    for scope in scopes:
         crl = sysca.CRLInfo(crl_number=10, crl_scope=scope)
         crlobj = sysca.create_x509_crl(ca_key, ca_cert, crl, 30)
         crl2obj = sysca.create_x509_crl(ca_key, ca_cert, crlobj, 30)
@@ -209,13 +212,13 @@ def test_scope_items():
         assert crl2.indirect_crl is False
         assert crl2.crl_scope == scope
 
-    rs = frozenset(["ca_compromise", "key_compromise"])
+    rs = ["ca_compromise", "key_compromise"]
     crl = sysca.CRLInfo(crl_number=10, only_some_reasons=rs)
     crlobj = sysca.create_x509_crl(ca_key, ca_cert, crl, 30)
     crl2obj = sysca.create_x509_crl(ca_key, ca_cert, crlobj, 30)
     crl2 = sysca.CRLInfo(load=crl2obj)
     assert crl2.indirect_crl is False
-    assert crl2.only_some_reasons == rs
+    assert crl2.only_some_reasons == frozenset(rs)
 
     urls = ["uri:http://f.co", "uri:https://s.co"]
     crl = sysca.CRLInfo(crl_number=10, full_methods=urls)
@@ -224,3 +227,4 @@ def test_scope_items():
     crl2 = sysca.CRLInfo(load=crl2obj)
     assert crl2.indirect_crl is False
     assert crl2.full_methods == urls
+

@@ -1,30 +1,32 @@
 
-import tempfile
 import os
-import pytest
+import tempfile
+from pathlib import Path
 
+import pytest
 from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives.serialization import PublicFormat, Encoding
+from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+from helpers import demo_data, demo_fn, new_root
 
 import sysca.api as sysca
-
-from helpers import demo_fn, new_root, demo_data
 
 EC_KEYS = ["ec"] + ["ec:" + n for n in sysca.get_ec_curves()]
 RSA_KEYS = ["rsa", "rsa:2048"]
 
 
-def process_write(key):
+def process_write(key: sysca.AllPrivateKeyTypes) -> None:
     fd, name = tempfile.mkstemp()
     os.close(fd)
     try:
         # ec key, unencrypted
-        open(name, "w").write(sysca.serialize(key))
+        with open(name, "w") as f:
+            f.write(sysca.serialize(key))
         key2 = sysca.load_key(name)
         assert sysca.same_pubkey(key, key2)
 
         # ec key, encrypted
-        open(name, "w").write(sysca.serialize(key, password="password"))
+        with open(name, "w") as f:
+            f.write(sysca.serialize(key, password="password"))
         with pytest.raises(TypeError):
             sysca.load_key(name)
         with pytest.raises(ValueError):
@@ -35,7 +37,7 @@ def process_write(key):
         os.unlink(name)
 
 
-def process_crl(ca_key, ca_info):
+def process_crl(ca_key: sysca.IssuerPrivateKeyTypes, ca_info: sysca.CertInfo) -> None:
     crl = sysca.CRLInfo()
     crl.delta_crl_number = 9
     crl.crl_number = 10
@@ -50,7 +52,8 @@ def process_crl(ca_key, ca_info):
     os.close(fd)
     try:
         # ec key, unencrypted
-        open(name, "w").write(data)
+        with open(name, "w") as f:
+            f.write(data)
         crlobj4 = sysca.load_crl(name)
         crl4 = sysca.CRLInfo(load=crlobj4)
         assert crl4.delta_crl_number == crl.delta_crl_number
@@ -58,7 +61,7 @@ def process_crl(ca_key, ca_info):
         os.unlink(name)
 
 
-def process_ktype(ktype):
+def process_ktype(ktype: str) -> None:
     # create ca key and cert
     ca_key = sysca.new_key(ktype)
     ca_pub_key = ca_key.public_key()
@@ -74,10 +77,14 @@ def process_ktype(ktype):
 
     # ca signs
     srv_info2 = sysca.CertInfo(load=srv_req)
-    srv_certobj = sysca.create_x509_cert(ca_key, srv_req.public_key(), srv_info2, ca_cert, 365)
+    srv_pub = srv_req.public_key()
+    srv_certobj = sysca.create_x509_cert(ca_key, srv_pub, srv_info2, ca_cert, 365)
     srv_cert = sysca.CertInfo(load=srv_certobj)
     assert "server" in srv_cert.usage
-    srv_cert.show(lambda x: x)
+
+    def drop(m: str) -> None:
+        pass
+    srv_cert.show(drop)
 
     # test same key
     assert sysca.same_pubkey(ca_key, ca_key)
@@ -88,17 +95,17 @@ def process_ktype(ktype):
     process_crl(ca_key, ca_cert)
 
 
-def test_rsa():
+def test_rsa() -> None:
     for ktype in RSA_KEYS:
         process_ktype(ktype)
 
 
-def test_ec():
+def test_ec() -> None:
     for ktype in EC_KEYS:
         process_ktype(ktype)
 
 
-def test_unsafe():
+def test_unsafe() -> None:
     with pytest.raises(ValueError):
         sysca.new_ec_key("some")
 
@@ -122,22 +129,23 @@ def test_unsafe():
         sysca.new_dsa_key(2500)
 
 
-def test_invalid_ktype():
+def test_invalid_ktype() -> None:
     with pytest.raises(ValueError):
         sysca.new_key("x")
     with pytest.raises(ValueError):
         sysca.new_key("x:x")
 
 
-def ssh_kformat(prefix, password, tmp_key):
+def ssh_kformat(prefix: str, password: str, tmp_key: str) -> None:
     sfx = "nopsw"
     if password:
         sfx = "psw"
     kfn = demo_fn("%s-%s.key" % (prefix, sfx))
 
     # load ssh private key
-    sk = sysca.load_file_any(kfn, password)
-    pktxt = open(kfn + ".pub", "rb").read()
+    sk = sysca.valid_issuer_private_key(sysca.load_file_any(kfn, password))
+    with open(kfn + ".pub", "rb") as f:
+        pktxt = f.read()
     pktxt2 = sk.public_key().public_bytes(Encoding.OpenSSH, PublicFormat.OpenSSH)
     assert pktxt2 == pktxt[:len(pktxt2)]
 
@@ -154,7 +162,7 @@ def ssh_kformat(prefix, password, tmp_key):
     skpem = sysca.serialize(sk, "ssh", password)
     with open(tmp_key, "w") as f:
         f.write(skpem)
-    sk2 = sysca.load_file_any(tmp_key, password)
+    sk2 = sysca.valid_issuer_private_key(sysca.load_file_any(tmp_key, password))
     pktxt4 = sk2.public_key().public_bytes(Encoding.OpenSSH, PublicFormat.OpenSSH)
     assert pktxt4 == pktxt2
 
@@ -162,7 +170,7 @@ def ssh_kformat(prefix, password, tmp_key):
         ssl_priv_pem = sysca.serialize(sk, "ssl", password)
         with open(tmp_key, "w") as f:
             f.write(ssl_priv_pem)
-        ssl_sk = sysca.load_file_any(tmp_key, password)
+        ssl_sk = sysca.valid_issuer_private_key(sysca.load_file_any(tmp_key, password))
         pktxt5 = ssl_sk.public_key().public_bytes(Encoding.OpenSSH, PublicFormat.OpenSSH)
         assert pktxt5 == pktxt4
     else:
@@ -178,7 +186,7 @@ def ssh_kformat(prefix, password, tmp_key):
             assert len(raw2) == 32
 
 
-def test_ssh_old(tmp_path):
+def test_ssh_old(tmp_path: Path) -> None:
     tmp_key = str(tmp_path / "test.key")
     ssh_kformat("ssh/old-ecdsa", "", tmp_key)
     ssh_kformat("ssh/old-ecdsa", "password", tmp_key)
@@ -186,13 +194,13 @@ def test_ssh_old(tmp_path):
     ssh_kformat("ssh/old-rsa", "password", tmp_key)
 
 
-def test_ssh_eddsa(tmp_path):
+def test_ssh_eddsa(tmp_path: Path) -> None:
     tmp_key = str(tmp_path / "test.key")
     ssh_kformat("ssh/new-ed25519", "", tmp_key)
     ssh_kformat("ssh/new-ed25519", "password", tmp_key)
 
 
-def test_ssh_new(tmp_path):
+def test_ssh_new(tmp_path: Path) -> None:
     tmp_key = str(tmp_path / "test.key")
     ssh_kformat("ssh/new-rsa", "", tmp_key)
     ssh_kformat("ssh/new-rsa", "password", tmp_key)
@@ -200,14 +208,15 @@ def test_ssh_new(tmp_path):
     ssh_kformat("ssh/new-ecdsa", "password", tmp_key)
 
 
-def process_ssh_cert(kfn):
+def process_ssh_cert(kfn: str) -> None:
     pk = sysca.load_file_any(demo_fn(kfn + "-cert.pub"))
-    pktxt = pk.public_bytes(Encoding.OpenSSH, PublicFormat.OpenSSH)
+    pkx = sysca.valid_issuer_public_key(pk)
+    pktxt = pkx.public_bytes(Encoding.OpenSSH, PublicFormat.OpenSSH).decode()
     pktxt2 = demo_data(kfn + ".pub")
     assert pktxt == pktxt2[:len(pktxt)]
 
 
-def test_ssh_certs():
+def test_ssh_certs() -> None:
     kfiles = [
         "ssh-ca/ecdsa-user.key",
         "ssh-ca/rsa-sha1-user.key",
@@ -218,18 +227,18 @@ def test_ssh_certs():
         process_ssh_cert(kfn)
 
 
-def test_ssh_certs_eddsa(tmp_path):
+def test_ssh_certs_eddsa(tmp_path: Path) -> None:
     process_ssh_cert("ssh-ca/ed25519-user.key")
 
 
-def test_serialize():
+def test_serialize() -> None:
     with pytest.raises(TypeError):
-        sysca.serialize(object(), "pem")
+        sysca.serialize(object(), "pem")  # type: ignore[call-overload]
     sk, cert = new_root(subject="CN=errtests")
     with pytest.raises(ValueError):
         sysca.serialize(sk.public_key(), "ssl")
     with pytest.raises(ValueError):
-        sysca.serialize(sk, "x")
+        sysca.serialize(sk, "x")  # type: ignore[call-overload]
     with pytest.raises(ValueError, match="private"):
         sysca.serialize(cert, "ssh")
 

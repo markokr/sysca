@@ -2,6 +2,9 @@
 """
 
 from datetime import datetime, timezone
+from typing import (
+    Any, Callable, Dict, FrozenSet, List, Literal, Optional, Union,
+)
 
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
@@ -9,24 +12,28 @@ from cryptography.x509.oid import (
     AuthorityInformationAccessOID, CRLEntryExtensionOID, ExtensionOID,
 )
 
-from .compat import (
-    get_utc_datetime, get_utc_datetime_opt,
-)
 from .certinfo import CertInfo
+from .compat import (
+    GNameList, IssuerPrivateKeyTypes, MaybeList, MaybeNumber, MaybeTimestamp,
+    NameSeq, TypeAlias, get_utc_datetime, get_utc_datetime_opt,
+)
 from .exceptions import InvalidCertificate
 from .formats import (
-    maybe_parse, maybe_parse_str, parse_list, parse_number,
-    parse_time_period, parse_timestamp, render_name,
+    maybe_parse_list, maybe_parse_number,
+    maybe_parse_timestamp, parse_time_period, render_name,
     render_serial, show_list, to_hex, to_issuer_gnames,
 )
-from .keys import get_hash_algo, valid_privkey
+from .keys import get_hash_algo, safe_issuer_privkey
 from .objects import (
     convert_urls_to_gnames, extract_auth_access,
     extract_distribution_point_urls, extract_gnames,
     extract_name, make_gnames, make_name,
 )
 
-__all__ = ("CRLInfo", "RevCertInfo", "create_x509_crl")
+__all__ = ("CRLInfo", "RevCertInfo", "create_x509_crl", "CRLScope")
+
+
+CRLScope: TypeAlias = Literal["all", "user", "ca", "attr"]
 
 
 # CRL reason
@@ -49,34 +56,53 @@ CRL_REASON_MAP = {v: k for k, v in CRL_REASON.items()}
 class RevCertInfo:
     """Container for revoced certificate info.
     """
-    def __init__(self, serial_number=None, reason=None, revocation_date=None,
-                 invalidity_date=None, issuer_gnames=None, load=None):
-        self.serial_number = maybe_parse_str(serial_number, parse_number, int)
+    serial_number: Optional[int]
+    reason: Optional[str]
+    revocation_date: Optional[datetime]
+    invalidity_date: Optional[datetime]
+    issuer_gnames: GNameList
+
+    def __init__(self,
+                 serial_number: Optional[MaybeNumber] = None,
+                 reason: Optional[str] = None,
+                 revocation_date: Optional[MaybeTimestamp] = None,
+                 invalidity_date: Optional[MaybeTimestamp] = None,
+                 issuer_gnames: Optional[MaybeList] = None,
+                 load: Optional[x509.RevokedCertificate] = None,
+                 ) -> None:
+        self.serial_number = maybe_parse_number(serial_number)
         self.reason = reason
-        self.revocation_date = maybe_parse_str(revocation_date, parse_timestamp, datetime)
-        self.invalidity_date = maybe_parse_str(invalidity_date, parse_timestamp, datetime)
-        self.issuer_gnames = issuer_gnames
+        self.revocation_date = maybe_parse_timestamp(revocation_date)
+        self.invalidity_date = maybe_parse_timestamp(invalidity_date)
+        self.issuer_gnames = maybe_parse_list(issuer_gnames)
 
         if load is not None:
             self.load_from_existing(load)
             if not self.issuer_gnames:
-                self.issuer_gnames = issuer_gnames
+                self.issuer_gnames = maybe_parse_list(issuer_gnames)
 
-    def generate_rcert(self, indirect_crl, cur_gnames):
+    def generate_rcert(self, indirect_crl: bool, cur_gnames: Optional[List[str]]) -> x509.RevokedCertificate:
         """Return x509.RevokedCertificate
         """
         if self.revocation_date is None:
             self.revocation_date = datetime.now(timezone.utc)
 
         builder = x509.RevokedCertificateBuilder()
-        builder = builder.serial_number(self.serial_number)
+        if self.serial_number is not None:
+            builder = builder.serial_number(self.serial_number)
         builder = builder.revocation_date(self.revocation_date)
         builder = self.install_extensions(builder, indirect_crl, cur_gnames)
         return builder.build(default_backend())
 
-    def install_extensions(self, builder, indirect_crl, cur_gnames):
+    def install_extensions(self,
+                           builder: x509.RevokedCertificateBuilder,
+                           indirect_crl: bool,
+                           cur_gnames: Optional[List[str]],
+                           ) -> x509.RevokedCertificateBuilder:
         """Install additional extensions to builder.
         """
+        ext: x509.ExtensionType
+
         if self.reason is not None:
             if self.reason not in CRL_REASON:
                 raise ValueError("invalid reason: %r" % self.reason)
@@ -100,7 +126,7 @@ class RevCertInfo:
             raise InvalidCertificate("Only Indirect-CRL can store certs from different CAs")
         return builder
 
-    def load_from_existing(self, obj):
+    def load_from_existing(self, obj: x509.RevokedCertificate) -> None:
         """Load data from x509.RevokedCertificate
         """
         if not isinstance(obj, x509.RevokedCertificate):
@@ -110,7 +136,7 @@ class RevCertInfo:
         self.revocation_date = get_utc_datetime(obj, "revocation_date")
         self.reason = None
         self.invalidity_date = None
-        self.issuer_gnames = None
+        self.issuer_gnames = []
 
         for ext in obj.extensions:
             extobj = ext.value
@@ -123,7 +149,7 @@ class RevCertInfo:
             else:
                 raise InvalidCertificate("Unsupported extension in CRL: %s" % (ext,))
 
-    def show(self, writeln):
+    def show(self, writeln: Callable[[str], None]) -> None:
         """Print info.
         """
         writeln("Revoked certificate:")
@@ -141,49 +167,90 @@ class RevCertInfo:
 class CRLInfo:
     """Container for certificate revocation object info.
     """
-    def __init__(self, revoked_list=None,
-                 next_update=None, last_update=None, crl_number=None, delta_crl_number=None,
-                 crl_scope="all", indirect_crl=False, only_some_reasons=None, full_methods=None,
-                 issuer_urls=None, ocsp_urls=None, delta_crl_urls=None,
-                 load=None):
+    revoked_list: List[RevCertInfo]
+    next_update: Optional[datetime]
+    last_update: Optional[datetime]
+    issuer_name: NameSeq
+
+    # CRLNumber
+    crl_number: Optional[int]
+
+    # DeltaCRLIndicator
+    delta_crl_number: Optional[int]
+
+    # IssuerAlternativeName
+    issuer_san: GNameList
+
+    # IssuingDistributionPoint
+    crl_scope: CRLScope
+    indirect_crl: bool
+    only_some_reasons: FrozenSet[str]
+    full_methods: List[str]
+
+    # Freshest CRL (a.k.a. Delta CRL Distribution Point)
+    delta_crl_urls: List[str]
+
+    # AuthorityKeyIdentifier
+    authority_key_identifier: Optional[str]
+    authority_cert_issuer: NameSeq
+    authority_cert_serial_number: Optional[int]
+
+    # AuthorityInformationAccess
+    issuer_urls: List[str]
+    ocsp_urls: List[str]
+
+    def __init__(self,
+                 revoked_list: Optional[List[RevCertInfo]] = None,
+                 next_update: Optional[MaybeTimestamp] = None,
+                 last_update: Optional[MaybeTimestamp] = None,
+                 crl_number: Optional[MaybeNumber] = None,
+                 delta_crl_number: Optional[MaybeNumber] = None,
+                 crl_scope: CRLScope = "all",
+                 indirect_crl: bool = False,
+                 only_some_reasons: Optional[MaybeList] = None,
+                 full_methods: Optional[MaybeList] = None,
+                 issuer_urls: Optional[MaybeList] = None,
+                 ocsp_urls: Optional[MaybeList] = None,
+                 delta_crl_urls: Optional[MaybeList] = None,
+                 load: Optional[x509.CertificateRevocationList] = None):
         """Initialize info object.
         """
         self.revoked_list = revoked_list or []
-        self.issuer_name = None
-        self.auth_key_id = None
-        self.next_update = next_update
-        self.last_update = last_update
+        self.next_update = maybe_parse_timestamp(next_update)
+        self.last_update = maybe_parse_timestamp(last_update)
+        self.issuer_name = ()
 
         # CRLNumber
-        self.crl_number = crl_number
+        self.crl_number = maybe_parse_number(crl_number)
 
         # DeltaCRLIndicator
-        self.delta_crl_number = delta_crl_number
+        self.delta_crl_number = maybe_parse_number(delta_crl_number)
 
         # IssuerAlternativeName
-        self.issuer_san = None
+        self.issuer_san = []
 
         # IssuingDistributionPoint
         self.crl_scope = crl_scope      # all,user,ca,attr
         self.indirect_crl = indirect_crl
-        self.only_some_reasons = only_some_reasons or set()
-        self.full_methods = full_methods
+        self.only_some_reasons = frozenset(maybe_parse_list(only_some_reasons))
+        self.full_methods = maybe_parse_list(full_methods)
 
         # Freshest CRL (a.k.a. Delta CRL Distribution Point)
-        self.delta_crl_urls = maybe_parse(delta_crl_urls, parse_list)
+        self.delta_crl_urls = maybe_parse_list(delta_crl_urls)
 
         # AuthorityKeyIdentifier
         self.authority_key_identifier = None
-        self.authority_cert_issuer = None
+        self.authority_cert_issuer = ()
         self.authority_cert_serial_number = None
 
         # AuthorityInformationAccess
-        self.issuer_urls = maybe_parse(issuer_urls, parse_list)
+        self.issuer_urls = maybe_parse_list(issuer_urls)
+        self.ocsp_urls = maybe_parse_list(ocsp_urls)
 
         if load is not None:
             self.load_from_existing(load)
 
-    def load_from_existing(self, obj):
+    def load_from_existing(self, obj: x509.CertificateRevocationList) -> None:
         """Load certificate info from existing CRL.
         """
         if not isinstance(obj, x509.CertificateRevocationList):
@@ -205,9 +272,7 @@ class CRLInfo:
                 self.authority_cert_issuer = extract_name(extobj.authority_cert_issuer)
                 self.authority_cert_serial_number = extobj.authority_cert_serial_number
             elif ext.oid == ExtensionOID.AUTHORITY_INFORMATION_ACCESS:
-                self.issuer_urls, ocspurls = extract_auth_access(extobj)
-                if ocspurls:
-                    raise InvalidCertificate("Unsupported ocsp urls: %r" % ocspurls)
+                self.issuer_urls, self.ocsp_urls = extract_auth_access(extobj)
             elif ext.oid == ExtensionOID.FRESHEST_CRL:
                 # list of DistributionPoint
                 self.delta_crl_urls = extract_distribution_point_urls(extobj)
@@ -218,13 +283,13 @@ class CRLInfo:
                 raise InvalidCertificate("Unsupported extension in CRL: %s" % (ext,))
 
         # load revoked certs
-        cur_gnames = to_issuer_gnames(self.issuer_name, self.issuer_san)
+        cur_gnames: GNameList = to_issuer_gnames(self.issuer_name, self.issuer_san)
         for r_cert_obj in obj:
             r_cert = RevCertInfo(load=r_cert_obj, issuer_gnames=cur_gnames)
             cur_gnames = r_cert.issuer_gnames
             self.revoked_list.append(r_cert)
 
-    def extract_issuing_dpoint(self, extobj):
+    def extract_issuing_dpoint(self, extobj: x509.IssuingDistributionPoint) -> None:
         if extobj.only_contains_user_certs:
             self.crl_scope = "user"
         elif extobj.only_contains_ca_certs:
@@ -237,17 +302,18 @@ class CRLInfo:
         self.indirect_crl = extobj.indirect_crl
         self.full_methods = extract_gnames(extobj.full_name)
         if extobj.only_some_reasons:
-            self.only_some_reasons = set(CRL_REASON_MAP[f] for f in extobj.only_some_reasons)
+            self.only_some_reasons = frozenset(CRL_REASON_MAP[f] for f in extobj.only_some_reasons)
         if extobj.relative_name:
             raise InvalidCertificate("Relative Name not supported")
 
-    def make_issuing_dpoint(self):
-        args = {
+    def make_issuing_dpoint(self) -> Optional[x509.IssuingDistributionPoint]:
+        args: Dict[str, Any] = {
             "full_name": None, "relative_name": None,
             "only_contains_user_certs": False,
             "only_contains_ca_certs": False,
             "only_some_reasons": None, "indirect_crl": False,
-            "only_contains_attribute_certs": False}
+            "only_contains_attribute_certs": False,
+        }
 
         if self.crl_scope == "ca":
             args["only_contains_ca_certs"] = True
@@ -271,9 +337,12 @@ class CRLInfo:
             return x509.IssuingDistributionPoint(**args)
         return None
 
-    def install_extensions(self, builder):
+    def install_extensions(
+            self, builder: x509.CertificateRevocationListBuilder) -> x509.CertificateRevocationListBuilder:
         """Add common extensions to CRL builder.
         """
+        ext: x509.ExtensionType
+
         # CRLNumber
         if self.crl_number is not None:
             ext = x509.CRLNumber(self.crl_number)
@@ -287,15 +356,20 @@ class CRLInfo:
             builder = builder.add_extension(ext, critical=True)
 
         # IssuingDistributionPoint
-        ext = self.make_issuing_dpoint()
-        if ext is not None:
-            builder = builder.add_extension(ext, critical=True)
+        extd = self.make_issuing_dpoint()
+        if extd is not None:
+            builder = builder.add_extension(extd, critical=True)
 
         # AuthorityInformationAccess
-        if self.issuer_urls:
+        if self.issuer_urls or self.ocsp_urls:
+            url_list: List[x509.AccessDescription] = []
             oid = AuthorityInformationAccessOID.CA_ISSUERS
-            ca_list = [x509.AccessDescription(oid, gn) for gn in convert_urls_to_gnames(self.issuer_urls)]
-            ext = x509.AuthorityInformationAccess(ca_list)
+            for gn in convert_urls_to_gnames(self.issuer_urls):
+                url_list.append(x509.AccessDescription(oid, gn))
+            oid = AuthorityInformationAccessOID.OCSP
+            for gn in convert_urls_to_gnames(self.ocsp_urls):
+                url_list.append(x509.AccessDescription(oid, gn))
+            ext = x509.AuthorityInformationAccess(url_list)
             builder = builder.add_extension(ext, critical=False)
 
         # FreshestCRL
@@ -309,14 +383,15 @@ class CRLInfo:
 
         return builder
 
-    def install_revoked_certs(self, builder, cur_gnames):
+    def install_revoked_certs(self, builder: x509.CertificateRevocationListBuilder,
+                              cur_gnames: Optional[List[str]]) -> x509.CertificateRevocationListBuilder:
         for rev_cert in self.revoked_list:
             rcert = rev_cert.generate_rcert(self.indirect_crl, cur_gnames)
             builder = builder.add_revoked_certificate(rcert)
             cur_gnames = rev_cert.issuer_gnames
         return builder
 
-    def show(self, writeln):
+    def show(self, writeln: Callable[[str], None]) -> None:
         """Print out details.
         """
         if self.issuer_name:
@@ -343,34 +418,49 @@ class CRLInfo:
             show_list("OnlySomeReasons", list(sorted(self.only_some_reasons)), writeln)
         show_list("Full Methods", self.full_methods, writeln)
         show_list("Issuer URLs", self.issuer_urls, writeln)
+        show_list("OCSP URLs", self.ocsp_urls, writeln)
         show_list("Delta CRL URLs", self.delta_crl_urls, writeln)
 
         for rcert in self.revoked_list:
             rcert.show(writeln)
 
-    def add_serial_number(self, serial, reason=None, invalidity_date=None, issuer_gnames=None,
-                          revocation_date=None):
+    def add_serial_number(self, serial: int, reason: Optional[str] = None,
+                          invalidity_date: Optional[Union[str, datetime]] = None,
+                          issuer_gnames: Optional[Union[str, List[str]]] = None,
+                          revocation_date: Optional[Union[str, datetime]] = None,
+                          ) -> None:
         rcrt = RevCertInfo(serial_number=serial, reason=reason, invalidity_date=invalidity_date,
                            revocation_date=revocation_date,
                            issuer_gnames=issuer_gnames)
         self.revoked_list.append(rcrt)
 
-    def add_certificate(self, cert, reason=None, invalidity_date=None, revocation_date=None):
+    def add_certificate(self, cert: Union[CertInfo, x509.Certificate],
+                        reason: Optional[str] = None,
+                        invalidity_date: Optional[Union[str, datetime]] = None,
+                        revocation_date: Optional[Union[str, datetime]] = None,
+                        ) -> None:
         if isinstance(cert, x509.Certificate):
             cert = CertInfo(load=cert)
         elif not isinstance(cert, CertInfo):
             raise TypeError("Expect CertInfo or x509.Certificate")
 
+        assert cert.serial_number
         self.add_serial_number(cert.serial_number, reason=reason, invalidity_date=invalidity_date,
                                revocation_date=revocation_date,
                                issuer_gnames=to_issuer_gnames(cert.issuer_name, cert.issuer_san))
 
 
-def create_x509_crl(issuer_privkey, issuer_info, crl_info, days=None,
-                    last_update=None, next_update=None):
+def create_x509_crl(issuer_privkey: IssuerPrivateKeyTypes,
+                    issuer_info: Union[CertInfo, x509.Certificate, x509.CertificateSigningRequest],
+                    crl_info: Union[CRLInfo, x509.CertificateRevocationList],
+                    days: Optional[int] = None,
+                    last_update: Optional[datetime] = None,
+                    next_update: Optional[datetime] = None) -> x509.CertificateRevocationList:
     """Create x509.CertificateRevocationList
     """
-    if not valid_privkey(issuer_privkey):
+    ext: x509.ExtensionType
+
+    if not safe_issuer_privkey(issuer_privkey):
         raise TypeError("Invalid issuer private key")
     if isinstance(issuer_info, (x509.Certificate, x509.CertificateSigningRequest)):
         issuer_info = CertInfo(load=issuer_info)
@@ -386,7 +476,8 @@ def create_x509_crl(issuer_privkey, issuer_info, crl_info, days=None,
     last_update, next_update = parse_time_period(days, last_update, next_update, gap=0)
 
     builder = x509.CertificateRevocationListBuilder()
-    builder = builder.issuer_name(make_name(issuer_info.subject))
+    if issuer_info.subject:
+        builder = builder.issuer_name(make_name(issuer_info.subject))
     builder = builder.last_update(last_update)
     builder = builder.next_update(next_update)
     builder = crl_info.install_extensions(builder)

@@ -1,6 +1,9 @@
 """Certificate and CertificateSigningRequest support.
 """
 
+from datetime import datetime
+from typing import Callable, List, Optional, Sequence, TypeVar, Union
+
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
 from cryptography.x509.oid import (
@@ -9,17 +12,20 @@ from cryptography.x509.oid import (
 )
 
 from .compat import (
-    PRIVKEY_CLASSES, PUBKEY_CLASSES,
-    get_utc_datetime,
+    GNameList, IssuerPrivateKeyTypes, IssuerPublicKeyTypes, MaybeList,
+    MaybeName, NameSeq, SubjectPrivateKeyClasses, SubjectPrivateKeyTypes,
+    SubjectPublicKeyClasses, SubjectPublicKeyTypes, TypeAlias,
+    get_utc_datetime, valid_issuer_private_key,
+    valid_subject_private_key, valid_subject_public_key,
 )
 from .exceptions import InvalidCertificate
 from .formats import (
-    maybe_parse, maybe_parse_str, parse_dn, parse_list, parse_number,
+    maybe_parse_dn, maybe_parse_list, maybe_parse_number,
     parse_time_period, render_name, render_serial, show_list, to_hex,
 )
 from .keys import (
-    get_hash_algo, get_invalid_key_usage, get_key_name,
-    new_serial_number, same_pubkey, valid_privkey, valid_pubkey,
+    get_hash_algo, get_invalid_key_usage, get_key_name, new_serial_number,
+    safe_issuer_privkey, safe_subject_pubkey, same_pubkey,
 )
 from .objects import (
     convert_urls_to_gnames, extract_auth_access,
@@ -28,6 +34,11 @@ from .objects import (
 )
 
 __all__ = ("CertInfo", "create_x509_req", "create_x509_cert")
+
+LoadTypes: TypeAlias = Union[x509.Certificate, x509.CertificateSigningRequest,
+                             SubjectPublicKeyTypes, SubjectPrivateKeyTypes]
+
+B = TypeVar("B", x509.CertificateBuilder, x509.CertificateSigningRequestBuilder)
 
 
 KU_FIELDS = [
@@ -80,11 +91,11 @@ NONCA_DEFAULTS = {
 }
 
 
-def extract_xkey_usage(ext):
+def extract_xkey_usage(ext: x509.ExtendedKeyUsage) -> List[str]:
     """Walk oid list, return keywords.
     """
     oidmap = {v: k for k, v in XKU_CODE_TO_OID.items()}
-    res = []
+    res: List[str] = []
     for oid in ext:
         if oid in oidmap:
             res.append(oidmap[oid])
@@ -93,10 +104,10 @@ def extract_xkey_usage(ext):
     return res
 
 
-def extract_key_usage(ext):
+def extract_key_usage(ext: x509.KeyUsage) -> List[str]:
     """Extract list of tags from KeyUsage extension.
     """
-    res = []
+    res: List[str] = []
     fields = KU_FIELDS[:]
 
     # "error-on-access", real funny
@@ -111,7 +122,7 @@ def extract_key_usage(ext):
     return res
 
 
-def extract_precert_signed_timestamps(extobj):
+def extract_precert_signed_timestamps(extobj: x509.PrecertificateSignedCertificateTimestamps) -> List[str]:
     return ["%s_%s - %s - %s" % (
             str(scts.version).split(".")[1], str(scts.entry_type).split(".")[1],
             scts.timestamp.isoformat(" "), to_hex(scts.log_id)
@@ -121,14 +132,97 @@ def extract_precert_signed_timestamps(extobj):
 class CertInfo:
     """Container for certificate fields.
     """
-    def __init__(self, subject=None, alt_names=None, ca=False, path_length=None,
-                 usage=None, ocsp_urls=None, crl_urls=None, issuer_urls=None,
-                 delta_crl_urls=None,
-                 ocsp_nocheck=False, ocsp_must_staple=False, ocsp_must_staple_v2=False,
-                 permit_subtrees=None, exclude_subtrees=None, inhibit_any=None,
-                 require_explicit_policy=None, inhibit_policy_mapping=None,
-                 certificate_policies=None,
-                 load=None):
+    # core
+    version: Optional[int]
+    serial_number: Optional[int]
+    not_valid_before: Optional[datetime]
+    not_valid_after: Optional[datetime]
+    issuer_name: NameSeq
+    unknown_extensions: List[str]
+    public_key_object: Optional[SubjectPublicKeyTypes]
+    signature_algorithm_oid: Optional[x509.ObjectIdentifier]
+
+    # Subject
+    subject: NameSeq
+
+    # BasicConstraints
+    ca: bool
+    path_length: Optional[int]
+
+    # SubjectAltNames
+    san: GNameList
+
+    # IssuerAlternativeName
+    issuer_san: GNameList
+
+    # KeyUsage + ExtendedKeyUsage
+    usage: List[str]
+
+    # AuthorityInformationAccess
+    ocsp_urls: List[str]
+    issuer_urls: List[str]
+
+    # CRLDistributionPoints
+    crl_urls: List[str]
+
+    # FreshestCRL
+    delta_crl_urls: List[str]
+
+    # NameConstraints
+    exclude_subtrees: List[str]
+    permit_subtrees: List[str]
+
+    # OCSPNoCheck
+    ocsp_nocheck: bool
+
+    # TLSFeature
+    ocsp_must_staple: bool
+    ocsp_must_staple_v2: bool
+
+    # InhibitAnyPolicy
+    inhibit_any: Optional[int]
+
+    # PolicyConstraints
+    require_explicit_policy: Optional[int]
+    inhibit_policy_mapping: Optional[int]
+
+    # CertificatePolicies
+    certificate_policies: List[str]
+
+    # SubjectKeyIdentifier
+    subject_key_identifier: Optional[str] = None
+
+    # AuthorityKeyIdentifier
+    authority_key_identifier: Optional[str]
+    authority_cert_serial_number: Optional[int]
+    authority_cert_issuer: GNameList
+
+    # PrecertPoison
+    precert_poison: bool
+
+    # PrecertificateSignedCertificateTimestamps
+    precert_signed_timestamps: List[str]
+
+    def __init__(self,
+                 subject: Optional[MaybeName] = None,
+                 alt_names: Optional[MaybeList] = None,
+                 ca: bool = False,
+                 path_length: Optional[int] = None,
+                 usage: Optional[MaybeList] = None,
+                 ocsp_urls: Optional[MaybeList] = None,
+                 crl_urls: Optional[MaybeList] = None,
+                 issuer_urls: Optional[MaybeList] = None,
+                 delta_crl_urls: Optional[MaybeList] = None,
+                 ocsp_nocheck: bool = False,
+                 ocsp_must_staple: bool = False,
+                 ocsp_must_staple_v2: bool = False,
+                 permit_subtrees: Optional[MaybeList] = None,
+                 exclude_subtrees: Optional[MaybeList] = None,
+                 inhibit_any: Optional[int] = None,
+                 require_explicit_policy: Optional[int] = None,
+                 inhibit_policy_mapping: Optional[int] = None,
+                 certificate_policies: Optional[MaybeList] = None,
+                 load: Optional[LoadTypes] = None) -> None:
         """Initialize info object.
 
         Arguments:
@@ -192,63 +286,82 @@ class CertInfo:
 
         """
         # core
+        self.version = None
         self.serial_number = None
         self.not_valid_before = None
         self.not_valid_after = None
-        self.issuer_name = None
-        self.version = None
+        self.issuer_name = ()
         self.unknown_extensions = []
         self.public_key_object = None
+        self.signature_algorithm_oid = None
+
         # Subject
-        self.subject = maybe_parse(subject, parse_dn)
+        self.subject = maybe_parse_dn(subject)
+
         # BasicConstraints
         self.ca = ca
         self.path_length = path_length
         if self.path_length is not None and self.path_length < 0:
             self.path_length = None
+
         # SubjectAltNames
-        self.san = maybe_parse(alt_names, parse_list)
+        self.san = maybe_parse_list(alt_names)
+
         # IssuerAlternativeName
-        self.issuer_san = None
+        self.issuer_san = []
+
         # KeyUsage + ExtendedKeyUsage
-        self.usage = maybe_parse(usage, parse_list)
+        self.usage = maybe_parse_list(usage)
+
         # AuthorityInformationAccess
-        self.ocsp_urls = maybe_parse(ocsp_urls, parse_list)
-        self.issuer_urls = maybe_parse(issuer_urls, parse_list)
+        self.ocsp_urls = maybe_parse_list(ocsp_urls)
+        self.issuer_urls = maybe_parse_list(issuer_urls)
+
         # CRLDistributionPoints
-        self.crl_urls = maybe_parse(crl_urls, parse_list)
+        self.crl_urls = maybe_parse_list(crl_urls)
+
         # FreshestCRL
-        self.delta_crl_urls = maybe_parse(delta_crl_urls, parse_list)
+        self.delta_crl_urls = maybe_parse_list(delta_crl_urls)
+
         # NameConstraints
-        self.exclude_subtrees = maybe_parse(exclude_subtrees, parse_list)
-        self.permit_subtrees = maybe_parse(permit_subtrees, parse_list)
+        self.exclude_subtrees = maybe_parse_list(exclude_subtrees)
+        self.permit_subtrees = maybe_parse_list(permit_subtrees)
+
         # OCSPNoCheck
         self.ocsp_nocheck = ocsp_nocheck
+
         # TLSFeature
         self.ocsp_must_staple = ocsp_must_staple
         self.ocsp_must_staple_v2 = ocsp_must_staple_v2
+
         # InhibitAnyPolicy
         self.inhibit_any = inhibit_any
+
         # PolicyConstraints
         self.require_explicit_policy = require_explicit_policy
         self.inhibit_policy_mapping = inhibit_policy_mapping
+
         # CertificatePolicies
-        self.certificate_policies = certificate_policies
+        self.certificate_policies = maybe_parse_list(certificate_policies)
+
         # SubjectKeyIdentifier
         self.subject_key_identifier = None
+
         # AuthorityKeyIdentifier
         self.authority_key_identifier = None
         self.authority_cert_serial_number = None
-        self.authority_cert_issuer = None
+        self.authority_cert_issuer = []
+
         # PrecertPoison
         self.precert_poison = False
+
         # PrecertificateSignedCertificateTimestamps
-        self.precert_signed_timestamps = None
+        self.precert_signed_timestamps = []
 
         if load is not None:
             self.load_from_existing(load)
 
-    def load_from_existing(self, obj):
+    def load_from_existing(self, obj: LoadTypes) -> None:
         """Load certificate info from existing certificate or certificate request.
         """
         self.unknown_extensions = []
@@ -265,17 +378,20 @@ class CertInfo:
             self.not_valid_after = get_utc_datetime(obj, "not_valid_after")
         elif isinstance(obj, x509.CertificateSigningRequest):
             self.version = None
-            self.issuer_name = None
-        elif isinstance(obj, PUBKEY_CLASSES):
-            self.public_key_object = obj
+            self.issuer_name = ()
+            self.signature_algorithm_oid = obj.signature_algorithm_oid
+        elif isinstance(obj, SubjectPublicKeyClasses):
+            self.public_key_object = valid_subject_public_key(obj)
             return
-        elif isinstance(obj, PRIVKEY_CLASSES):
-            self.public_key_object = obj.public_key()
+        elif isinstance(obj, SubjectPrivateKeyClasses):
+            priv_key = valid_subject_private_key(obj)
+            self.public_key_object = priv_key.public_key()
             return
         else:
             raise InvalidCertificate("Invalid obj type: %s" % type(obj))
 
-        self.public_key_object = obj.public_key()
+        self.public_key_object = valid_subject_public_key(obj.public_key())
+        self.signature_algorithm_oid = obj.signature_algorithm_oid
         self.subject = extract_name(obj.subject)
 
         for ext in obj.extensions:
@@ -307,7 +423,7 @@ class CertInfo:
             elif ext.oid == ExtensionOID.AUTHORITY_KEY_IDENTIFIER:
                 self.authority_key_identifier = to_hex(extobj.key_identifier)
                 self.authority_cert_serial_number = extobj.authority_cert_serial_number
-                self.authority_cert_issuer = extract_gnames(self.authority_cert_issuer)
+                self.authority_cert_issuer = extract_gnames(extobj.authority_cert_issuer)
             elif ext.oid == ExtensionOID.OCSP_NO_CHECK:
                 self.ocsp_nocheck = True
             elif ext.oid == ExtensionOID.TLS_FEATURE:
@@ -332,25 +448,32 @@ class CertInfo:
             else:
                 self.unknown_extensions.append(ext.oid.dotted_string)
 
-    def public_key(self):
+    def public_key(self) -> Optional[SubjectPublicKeyTypes]:
         return self.public_key_object
 
-    def get_tls_features(self):
+    def get_tls_features(self) -> List[x509.TLSFeatureType]:
         """Return TLS Feature list
         """
-        tls_features = []
+        tls_features: List[x509.TLSFeatureType] = []
         if self.ocsp_must_staple:
             tls_features.append(x509.TLSFeatureType.status_request)
         if self.ocsp_must_staple_v2:
             tls_features.append(x509.TLSFeatureType.status_request_v2)
         return tls_features
 
-    def install_extensions(self, builder, subject_pubkey, issuer_pubkey, issuer_san):
+    def install_extensions(self,
+                           builder: B,
+                           subject_pubkey: Optional[SubjectPublicKeyTypes],
+                           issuer_pubkey: Optional[IssuerPublicKeyTypes],
+                           issuer_san: Optional[Sequence[str]],
+                           ) -> B:
         """Add common extensions to Cert- or CSR builder.
         """
         if self.unknown_extensions:
             raise InvalidCertificate("Unknown extensions: %s" %
                                      ", ".join(self.unknown_extensions))
+
+        ext: x509.ExtensionType
 
         # BasicConstraints, critical
         if self.ca:
@@ -369,9 +492,10 @@ class CertInfo:
             if k in self.usage:
                 for k2 in XKU_DEFAULTS[k]:
                     ku_args[k2] = True
-        invalid_usage = [k for k in get_invalid_key_usage(subject_pubkey) if ku_args.get(k)]
-        if invalid_usage:
-            raise InvalidCertificate("Key type does not support usage: %s" % ",".join(invalid_usage))
+        if subject_pubkey:
+            invalid_usage = [k for k in get_invalid_key_usage(subject_pubkey) if ku_args.get(k)]
+            if invalid_usage:
+                raise InvalidCertificate("Key type does not support usage: %s" % ",".join(invalid_usage))
         ext = make_key_usage(**ku_args)
         builder = builder.add_extension(ext, critical=True)
 
@@ -479,13 +603,19 @@ class CertInfo:
         # configured builder
         return builder
 
-    def show(self, writeln):
+    def show(self, writeln: Callable[[str], None]) -> None:
         """Print out details.
         """
         if self.version is not None:
             writeln("Version: %s" % self.version)
         if self.public_key_object:
             writeln("Public key: %s" % get_key_name(self.public_key_object))
+        if self.signature_algorithm_oid:
+            signame = getattr(self.signature_algorithm_oid, "_name", "")
+            if signame:
+                writeln("Signature: %s" % signame)
+            else:
+                writeln("Signature: %s" % self.signature_algorithm_oid.dotted_string)
         if self.not_valid_before:
             writeln("Not Valid Before: %s" % self.not_valid_before.isoformat(" "))
         if self.not_valid_after:
@@ -520,7 +650,7 @@ class CertInfo:
         if self.ocsp_nocheck:
             writeln("OCSP NoCheck: True")
 
-        tls_features = []
+        tls_features: List[str] = []
         if self.ocsp_must_staple:
             tls_features.append("status_request")
         if self.ocsp_must_staple_v2:
@@ -540,10 +670,16 @@ class CertInfo:
             writeln("Unknown extensions: %s" % ", ".join(self.unknown_extensions))
 
 
-def create_x509_req(privkey, subject_info):
+MaybeCertInfo: TypeAlias = Union[CertInfo, x509.Certificate, x509.CertificateSigningRequest]
+
+
+def create_x509_req(
+    privkey: SubjectPrivateKeyTypes,
+    subject_info: MaybeCertInfo,
+) -> x509.CertificateSigningRequest:
     """Create x509.CertificateSigningRequest.
     """
-    if not valid_privkey(privkey):
+    if not safe_subject_pubkey(privkey.public_key()):
         raise ValueError("Invalid private key")
     if isinstance(subject_info, (x509.Certificate, x509.CertificateSigningRequest)):
         subject_info = CertInfo(load=subject_info)
@@ -554,21 +690,24 @@ def create_x509_req(privkey, subject_info):
     builder = builder.subject_name(make_name(subject_info.subject))
     builder = subject_info.install_extensions(builder, privkey.public_key(), None, None)
 
+    # cannot create X25519/X448 certs ATM
+    issuer_key = valid_issuer_private_key(privkey)
+
     # create final request
-    req = builder.sign(private_key=privkey,
-                       algorithm=get_hash_algo(privkey, "CSR"),
+    req = builder.sign(private_key=issuer_key,
+                       algorithm=get_hash_algo(issuer_key, "CSR"),
                        backend=default_backend())
     return req
 
 
-def validate_issuer(issuer_info):
+def validate_issuer(issuer_info: CertInfo) -> None:
     if not issuer_info.ca:
         raise InvalidCertificate("Issuer must be CA.")
     if "key_cert_sign" not in issuer_info.usage:
         raise InvalidCertificate("Issuer CA is not allowed to sign certs.")
 
 
-def validate_subject_ca(subject_info, issuer_info):
+def validate_subject_ca(subject_info: CertInfo, issuer_info: CertInfo) -> None:
     # not self-signing, check depth
     if issuer_info.path_length is None:
         pass
@@ -580,9 +719,16 @@ def validate_subject_ca(subject_info, issuer_info):
         raise InvalidCertificate("--path-length not allowed by issuer")
 
 
-def create_x509_cert(issuer_privkey, subject_pubkey, subject_info, issuer_info,
-                     days=None, serial_number=None,
-                     not_valid_before=None, not_valid_after=None) -> x509.Certificate:
+def create_x509_cert(
+    issuer_privkey: IssuerPrivateKeyTypes,
+    subject_pubkey: SubjectPublicKeyTypes,
+    subject_info: MaybeCertInfo,
+    issuer_info: MaybeCertInfo,
+    days: Optional[int] = None,
+    serial_number: Optional[Union[str, int]] = None,
+    not_valid_before: Optional[Union[str, datetime]] = None,
+    not_valid_after: Optional[Union[str, datetime]] = None
+) -> x509.Certificate:
     """Create x509.Certificate
     """
     if isinstance(subject_info, x509.CertificateSigningRequest):
@@ -595,12 +741,13 @@ def create_x509_cert(issuer_privkey, subject_pubkey, subject_info, issuer_info,
     elif not isinstance(issuer_info, CertInfo):
         raise ValueError("Expect issuer_info to be CertInfo or x509.Certificate")
 
-    if not valid_privkey(issuer_privkey):
+    if not safe_issuer_privkey(issuer_privkey):
         raise ValueError("Invalid issuer private key")
-    if not valid_pubkey(subject_pubkey):
+    if not safe_subject_pubkey(subject_pubkey):
         raise ValueError("Invalid subject public key")
 
-    if not same_pubkey(issuer_privkey, issuer_info):
+    ikey = issuer_info.public_key()
+    if ikey is None or not same_pubkey(issuer_privkey.public_key(), ikey):
         raise InvalidCertificate("Issuer private key does not match certificate")
 
     # need ca rights, unless selfsigned
@@ -613,9 +760,10 @@ def create_x509_cert(issuer_privkey, subject_pubkey, subject_info, issuer_info,
     not_valid_before, not_valid_after = parse_time_period(days, not_valid_before, not_valid_after)
 
     # set serial
-    serial_number = maybe_parse_str(serial_number, parse_number, int)
     if serial_number is None:
-        serial_number = new_serial_number()
+        final_serial_number = new_serial_number()
+    else:
+        final_serial_number = maybe_parse_number(serial_number)
 
     # create builder
     builder = (x509.CertificateBuilder()
@@ -623,7 +771,7 @@ def create_x509_cert(issuer_privkey, subject_pubkey, subject_info, issuer_info,
                .issuer_name(make_name(issuer_info.subject))
                .not_valid_before(not_valid_before)
                .not_valid_after(not_valid_after)
-               .serial_number(serial_number)
+               .serial_number(final_serial_number)
                .public_key(subject_pubkey))
 
     builder = subject_info.install_extensions(

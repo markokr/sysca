@@ -74,6 +74,9 @@ disable=bare-except,
         consider-using-dict-items,
 	trailing-newlines,
 	unused-argument,
+        unspecified-encoding,
+        ungrouped-imports,
+        duplicate-code,
 	unused-variable,
 	useless-object-inheritance
 

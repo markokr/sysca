@@ -7,14 +7,14 @@ from typing import Callable, Dict, List, Mapping, Tuple, Union
 from cryptography import x509
 
 from .certinfo import CertInfo, create_x509_cert
-from .compat import PRIVKEY_TYPES
+from .compat import IssuerPrivateKeyTypes, valid_issuer_private_key
 from .files import load_cert, load_key
 from .keys import new_key
 
 __all__ = ['autogen_config_file', 'autogen_config']
 
 LoadCA = Callable[[str], Tuple[str, str]]
-AutogenResult = Mapping[str, Tuple[PRIVKEY_TYPES, x509.Certificate, Dict[str, str]]]
+AutogenResult = Mapping[str, Tuple[IssuerPrivateKeyTypes, x509.Certificate, Dict[str, str]]]
 
 
 def autogen_config_file(fn: str, load_ca: LoadCA, defs: Mapping[str, str]) -> AutogenResult:
@@ -54,7 +54,7 @@ def autogen_config(cf: ConfigParser, load_ca: LoadCA) -> AutogenResult:
 
         ca_name = sect['ca_name']
         ca_key_fn, ca_cert_fn = load_ca(ca_name)
-        ca_key = load_key(ca_key_fn)
+        ca_key = valid_issuer_private_key(load_key(ca_key_fn))
         ca_cert = load_cert(ca_cert_fn)
 
         usage: Union[str, List[str]] = sect.get('usage') or ''

@@ -1,17 +1,18 @@
 
-import sys
 import os.path
+import sys
+from pathlib import Path
 
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
+from helpers import demo_data, demo_fn, demo_raw
+from pytest import CaptureFixture
 
+from sysca.api import CertInfo, set_unsafe
 from sysca.tool import run_sysca
-from sysca.api import set_unsafe, CertInfo
-
-from helpers import demo_fn, demo_raw, demo_data
 
 
-def sysca(*args):
+def sysca(*args: str) -> int:
     try:
         try:
             run_sysca(args)
@@ -19,31 +20,31 @@ def sysca(*args):
             set_unsafe(False)
         return 0
     except SystemExit as ex:
-        return int(ex.code)
+        return int(ex.code or 0)
     except Exception as ex:
         sys.stderr.write(str(ex) + "\n")
         return 1
 
 
-def test_no_command(capsys):
+def test_no_command(capsys: CaptureFixture[str]) -> None:
     assert sysca() >= 1
     res = capsys.readouterr()
     assert "command" in res.err
 
 
-def test_help(capsys):
+def test_help(capsys: CaptureFixture[str]) -> None:
     assert sysca("--help") == 0
     res = capsys.readouterr()
     assert "unsafe" in res.out
 
 
-def test_version(capsys):
+def test_version(capsys: CaptureFixture[str]) -> None:
     assert sysca("--version") == 0
     res = capsys.readouterr()
     assert "cryptography" in res.out
 
 
-def test_newkey(capsys):
+def test_newkey(capsys: CaptureFixture[str]) -> None:
     assert sysca("new-key") == 0
     res = capsys.readouterr()
     assert "BEGIN PRIVATE KEY" in res.out
@@ -67,7 +68,7 @@ def test_newkey(capsys):
     assert "BEGIN" not in res.out
 
 
-def test_newkey_openssl(capsys):
+def test_newkey_openssl(capsys: CaptureFixture[str]) -> None:
     assert sysca("new-key", "--text") == 0
     res = capsys.readouterr()
     assert "BEGIN PRIVATE KEY" in res.out
@@ -81,7 +82,7 @@ def test_newkey_openssl(capsys):
     assert "BEGIN PUBLIC KEY" in res.out
 
 
-def test_list_curves(capsys):
+def test_list_curves(capsys: CaptureFixture[str]) -> None:
     assert sysca("list", "ec-curves") == 0
     res = capsys.readouterr()
     assert "secp256r1" in res.out
@@ -93,7 +94,7 @@ def test_list_curves(capsys):
     assert "secp192r1" in res.out
 
 
-def test_show(capsys):
+def test_show(capsys: CaptureFixture[str]) -> None:
     files = [
         "ec-p256-ca.crt", "ec-p256-ca.csr", "ec-p256-ca.crl",
         "letsencrypt-org.crt", "ec2-rich.csr", "ec2-rich.crt",
@@ -101,7 +102,7 @@ def test_show(capsys):
     for fn in files:
         assert sysca("show", demo_fn(fn)) == 0
         res = capsys.readouterr()
-        assert res.out == demo_data(fn + ".out", "r")
+        assert res.out == demo_data(fn + ".out")
 
     assert sysca("show", demo_fn("password.txt")) >= 1
     capsys.readouterr()
@@ -119,7 +120,7 @@ def test_show(capsys):
     capsys.readouterr()
 
 
-def test_request(capsys):
+def test_request(capsys: CaptureFixture[str]) -> None:
     assert sysca("request",
                  "--key", demo_fn("ec-p256.key"),
                  "--subject", "CN=foo") == 0
@@ -139,7 +140,7 @@ def test_request(capsys):
     assert "REQUEST" in res.out
 
 
-def test_request_openssl(capsys):
+def test_request_openssl(capsys: CaptureFixture[str]) -> None:
     assert sysca("request", "--text",
                  "--key", demo_fn("ec-p256.key"),
                  "--subject", "CN=foo") == 0
@@ -147,7 +148,7 @@ def test_request_openssl(capsys):
     assert "REQUEST" in res.out
 
 
-def test_sign(capsys):
+def test_sign(capsys: CaptureFixture[str]) -> None:
     assert 0 == sysca("sign",
                       "--ca-key", demo_fn("ec-p256.key"),
                       "--ca-info", demo_fn("ec-p256-ca.csr"),
@@ -158,7 +159,7 @@ def test_sign(capsys):
     assert "CERTIFICATE" in res.out
 
 
-def test_sign_reset(capsys):
+def test_sign_reset(capsys: CaptureFixture[str]) -> None:
     assert 0 == sysca("sign",
                       "--ca-key", demo_fn("ec-p256.key"),
                       "--ca-info", demo_fn("ec-p256-ca.crt"),
@@ -195,7 +196,7 @@ def test_sign_reset(capsys):
     assert "client" in info2.usage and "client" not in info1.usage
 
 
-def test_sign_openssl(capsys):
+def test_sign_openssl(capsys: CaptureFixture[str]) -> None:
     assert 0 == sysca("sign", "--text",
                       "--ca-key", demo_fn("ec-p256.key"),
                       "--ca-info", demo_fn("ec-p256-ca.csr"),
@@ -206,7 +207,7 @@ def test_sign_openssl(capsys):
     assert "CERTIFICATE" in res.out
 
 
-def test_selfsign(capsys):
+def test_selfsign(capsys: CaptureFixture[str]) -> None:
     assert 0 == sysca("selfsign",
                       "--key", demo_fn("ec-p256.key"),
                       "--days", "200",
@@ -229,26 +230,26 @@ def test_selfsign(capsys):
     assert "CERTIFICATE" in res.out
 
 
-def test_export(capsys):
+def test_export(capsys: CaptureFixture[str]) -> None:
     assert 0 == sysca("export", demo_fn("ec-p256-ca.csr"))
     res = capsys.readouterr()
-    assert res.out == demo_data("ec-p256-ca.csr", "r")
+    assert res.out == demo_data("ec-p256-ca.csr")
 
     assert 0 == sysca("export", demo_fn("ec-p256-ca.crt"))
     res = capsys.readouterr()
-    assert res.out == demo_data("ec-p256-ca.crt", "r")
+    assert res.out == demo_data("ec-p256-ca.crt")
 
     assert 0 == sysca("export", demo_fn("ec-p256.pub"))
     res = capsys.readouterr()
-    assert res.out == demo_data("ec-p256.pub", "r")
+    assert res.out == demo_data("ec-p256.pub")
 
     assert 0 == sysca("export", demo_fn("ec-p256.key"))
     res = capsys.readouterr()
-    assert res.out == demo_data("ec-p256.key", "r")
+    assert res.out == demo_data("ec-p256.key")
 
     assert 0 == sysca("export", demo_fn("ec-p256-ca.crl"))
     res = capsys.readouterr()
-    assert res.out == demo_data("ec-p256-ca.crl", "r")
+    assert res.out == demo_data("ec-p256-ca.crl")
 
     assert 0 == sysca("export", demo_fn("ec-p256.key"), "--outform=ssl")
     res = capsys.readouterr()
@@ -267,37 +268,40 @@ def test_export(capsys):
     assert " OPENSSH PRIVATE " in res.out
 
 
-def test_export_der(capsys, tmp_path):
+def test_export_der(capsys: CaptureFixture[str], tmp_path: Path) -> None:
     dst = str(tmp_path / "tmp.bin")
     assert 0 == sysca("export", demo_fn("ec-p256-ca.crt"), "--outform=DER", "--out", dst)
     res = capsys.readouterr()
-    assert open(dst, "rb").read() == demo_raw("ec-p256-ca.crt")
+    with open(dst, "rb") as f:
+        assert f.read() == demo_raw("ec-p256-ca.crt")
 
     assert 0 == sysca("export", demo_fn("ec-p256-ca.csr"), "--outform=DER", "--out", dst)
     res = capsys.readouterr()
     assert "-----" not in res.out
-    assert open(dst, "rb").read() == demo_raw("ec-p256-ca.csr")
+    with open(dst, "rb") as f:
+        assert f.read() == demo_raw("ec-p256-ca.csr")
 
     assert 0 == sysca("export", "--outform=DER", demo_fn("ec-p256-ca.crl"), "--out", dst)
     res = capsys.readouterr()
-    assert open(dst, "rb").read() == demo_raw("ec-p256-ca.crl")
+    with open(dst, "rb") as f:
+        assert f.read() == demo_raw("ec-p256-ca.crl")
 
     assert 1 <= sysca("export", "--outform=DER", demo_fn("ec-p256-ca.crl"), "--text")
     res = capsys.readouterr()
 
 
-def test_export_pub(capsys):
+def test_export_pub(capsys: CaptureFixture[str]) -> None:
     assert 0 == sysca("export-pub", demo_fn("ec-p256-ca.csr"))
     res = capsys.readouterr()
-    assert res.out == demo_data("ec-p256.pub", "r")
+    assert res.out == demo_data("ec-p256.pub")
 
     assert 0 == sysca("export-pub", demo_fn("ec-p256-ca.crt"))
     res = capsys.readouterr()
-    assert res.out == demo_data("ec-p256.pub", "r")
+    assert res.out == demo_data("ec-p256.pub")
 
     assert 0 == sysca("export-pub", demo_fn("ec-p256.pub"))
     res = capsys.readouterr()
-    assert res.out == demo_data("ec-p256.pub", "r")
+    assert res.out == demo_data("ec-p256.pub")
 
     assert 0 == sysca("export-pub", demo_fn("ec-p256.pub"), "--outform=ssh")
     res = capsys.readouterr()
@@ -305,7 +309,7 @@ def test_export_pub(capsys):
 
     assert 0 == sysca("export-pub", demo_fn("ec-p256.key"))
     res = capsys.readouterr()
-    assert res.out == demo_data("ec-p256.pub", "r")
+    assert res.out == demo_data("ec-p256.pub")
 
     assert 0 != sysca("export-pub", demo_fn("ec-p256-ca.crl"))
     res = capsys.readouterr()
@@ -314,7 +318,7 @@ def test_export_pub(capsys):
     res = capsys.readouterr()
 
 
-def test_update_crl(capsys):
+def test_update_crl(capsys: CaptureFixture[str]) -> None:
     assert 0 == sysca("update-crl",
                       "--ca-key", demo_fn("ec-p256.key"),
                       "--ca-info", demo_fn("ec-p256-ca.crt"),
@@ -353,7 +357,7 @@ def test_update_crl(capsys):
     assert "CRL" in res.out
 
 
-def test_update_crl_openssl(capsys):
+def test_update_crl_openssl(capsys: CaptureFixture[str]) -> None:
     assert 0 == sysca("update-crl", "--text",
                       "--ca-key", demo_fn("ec-p256.key"),
                       "--ca-info", demo_fn("ec-p256-ca.crt"),
@@ -365,7 +369,7 @@ def test_update_crl_openssl(capsys):
     assert "X509 CRL" in res.out
 
 
-def test_show_openssl(capsys):
+def test_show_openssl(capsys: CaptureFixture[str]) -> None:
     assert 0 == sysca("show", demo_fn("ec-p256-ca.csr"), "--text")
     res = capsys.readouterr()
     assert "REQUEST" in res.out
@@ -379,7 +383,7 @@ def test_show_openssl(capsys):
     assert "X509 CRL" in res.out
 
 
-def test_autogen(capsys, tmp_path):
+def test_autogen(capsys: CaptureFixture[str], tmp_path: Path) -> None:
     dst = str(tmp_path)
     err = sysca("autogen", "--text",
                 "--ca-dir", demo_fn("autogen"),
