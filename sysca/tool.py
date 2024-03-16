@@ -149,7 +149,8 @@ def info_from_args(args: argparse.Namespace) -> CertInfo:
         inhibit_any=args.inhibit_any,
         require_explicit_policy=args.require_explicit_policy,
         inhibit_policy_mapping=args.inhibit_policy_mapping,
-        path_length=args.path_length)
+        path_length=args.path_length,
+        rsa_pss=args.rsa_pss)
 
 
 def msg_show(ln: str) -> None:
@@ -359,7 +360,7 @@ def show_command_sysca(args: argparse.Namespace) -> None:
             first = False
         else:
             print("")
-        print(fn)
+        #print(fn)
         obj = load_file_any(fn, password=psw)
         try:
             if isinstance(obj, (x509.Certificate, x509.CertificateSigningRequest)):
@@ -551,6 +552,11 @@ def opts_signing(p: GParser) -> None:
                    help="Disable automatic serial number generation.")
 
 
+def opts_rsa_pss(p: GParser) -> None:
+    p.add_argument("--rsa-pss", action="store_true",
+                   help="Use PSS padding for RSA keys.")
+
+
 def opts_cert_fields(p: GParser) -> None:
     p.add_argument("--subject",
                    help="Subject Distinguished Name - /CN=foo/O=Org/OU=Web/")
@@ -682,6 +688,9 @@ def setup_args_request(sub: SubParser) -> None:
     opts_output(g)
     opts_text(g)
 
+    g = p.add_argument_group("Signing")
+    opts_rsa_pss(g)
+
     g = p.add_argument_group("Certificate fields")
     opts_cert_fields(g)
 
@@ -702,6 +711,7 @@ def setup_args_sign(sub: SubParser) -> None:
     opts_password(g)
     opts_signing(g)
     opts_reset(g)
+    opts_rsa_pss(g)
 
     g = p.add_argument_group("Certificate fields")
     opts_cert_fields(g)
@@ -721,6 +731,7 @@ def setup_args_selfsign(sub: SubParser) -> None:
     opts_key(g)
     opts_password(g)
     opts_signing(g)
+    opts_rsa_pss(g)
 
     g = p.add_argument_group("Certificate fields")
     opts_cert_fields(g)

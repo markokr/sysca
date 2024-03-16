@@ -7,7 +7,6 @@ import subprocess
 from typing import Mapping, Optional, Union
 
 from cryptography import x509
-from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.serialization import (
     load_der_private_key, load_der_public_key,
     load_pem_private_key, load_pem_public_key,
@@ -64,9 +63,9 @@ def load_key(fn: str, psw: Optional[Union[str, bytes]] = None) -> AllPrivateKeyT
         bpsw = psw.encode("utf8") if isinstance(psw, str) else psw
     data = load_gpg_file(fn)
     if is_pem_data(data):
-        key = load_pem_private_key(data, password=bpsw, backend=default_backend())
+        key = load_pem_private_key(data, password=bpsw)
     else:
-        key = load_der_private_key(data, password=bpsw, backend=default_backend())
+        key = load_der_private_key(data, password=bpsw)
     return key
 
 
@@ -76,9 +75,9 @@ def load_pub_key(fn: str) -> AllPublicKeyTypes:
     with open(fn, "rb") as f:
         data = f.read()
     if is_pem_data(data):
-        key = load_pem_public_key(data, default_backend())
+        key = load_pem_public_key(data)
     else:
-        key = load_der_public_key(data, default_backend())
+        key = load_der_public_key(data)
     return key
 
 
@@ -88,8 +87,8 @@ def load_req(fn: str) -> x509.CertificateSigningRequest:
     with open(fn, "rb") as f:
         data = f.read()
     if is_pem_data(data):
-        return x509.load_pem_x509_csr(data, default_backend())
-    return x509.load_der_x509_csr(data, default_backend())
+        return x509.load_pem_x509_csr(data)
+    return x509.load_der_x509_csr(data)
 
 
 def load_cert(fn: str) -> x509.Certificate:
@@ -98,8 +97,8 @@ def load_cert(fn: str) -> x509.Certificate:
     with open(fn, "rb") as f:
         data = f.read()
     if is_pem_data(data):
-        return x509.load_pem_x509_certificate(data, default_backend())
-    return x509.load_der_x509_certificate(data, default_backend())
+        return x509.load_pem_x509_certificate(data)
+    return x509.load_der_x509_certificate(data)
 
 
 def load_crl(fn: str) -> x509.CertificateRevocationList:
@@ -108,8 +107,8 @@ def load_crl(fn: str) -> x509.CertificateRevocationList:
     with open(fn, "rb") as f:
         data = f.read()
     if is_pem_data(data):
-        return x509.load_pem_x509_crl(data, default_backend())
-    return x509.load_der_x509_crl(data, default_backend())
+        return x509.load_pem_x509_crl(data)
+    return x509.load_der_x509_crl(data)
 
 
 _bin_rc = re.compile(b"[\x00-\x08\x0b\x0c\x0e-\x1f]")
@@ -231,27 +230,27 @@ def load_file_any(fn: str, password: Optional[Union[str, bytes]] = None) -> Opti
         fmt = autodetect_filename(fn)
     if fmt == "csr":
         if is_pem_data(data):
-            return x509.load_pem_x509_csr(data, default_backend())
-        return x509.load_der_x509_csr(data, default_backend())
+            return x509.load_pem_x509_csr(data)
+        return x509.load_der_x509_csr(data)
     elif fmt == "crt":
         if is_pem_data(data):
-            return x509.load_pem_x509_certificate(data, default_backend())
-        return x509.load_der_x509_certificate(data, default_backend())
+            return x509.load_pem_x509_certificate(data)
+        return x509.load_der_x509_certificate(data)
     elif fmt == "crl":
         if is_pem_data(data):
-            return x509.load_pem_x509_crl(data, default_backend())
-        return x509.load_der_x509_crl(data, default_backend())
+            return x509.load_pem_x509_crl(data)
+        return x509.load_der_x509_crl(data)
     elif fmt == "pub":
         if is_pem_data(data):
-            pub = load_pem_public_key(data, default_backend())
+            pub = load_pem_public_key(data)
         else:
-            pub = load_der_public_key(data, default_backend())
+            pub = load_der_public_key(data)
         return pub
     elif fmt == "key":
         return load_key(fn, password)
     elif fmt == "key-ssh":
-        return load_ssh_private_key(data, password, default_backend())
+        return load_ssh_private_key(data, password)
     elif fmt == "pub-ssh":
-        return load_ssh_public_key(data, default_backend())
+        return load_ssh_public_key(data)
     return None
 

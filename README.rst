@@ -18,7 +18,7 @@ Features
 Dependencies
 ------------
 
-- Python `cryptography`_ module (version >= 2.1).
+- Python `cryptography`_ module (version >= 3.1).
 - (Optional) `gpg`_ command-line tool to decrypt files.
 
 .. _cryptography: https://cryptography.io/
@@ -318,6 +318,9 @@ Options useful only when apps support them:
     Qualifier spec for UserNotice with explicitText and noticeRef: ``|T=explicit_text|O=orgName|N=1:2:3|``
 
     Extension: CertificatePolicies_.
+
+**--rsa-pss**
+    Use RSA-PSS padding when signing with RSA key.
 
 sign
 ~~~~

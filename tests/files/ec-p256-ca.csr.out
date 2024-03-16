@@ -1,4 +1,5 @@
 Public key: ec:secp256r1
+Signature: ecdsa-with-SHA256
 Subject: CN = ecreq
 CA: True
 Usage: key_cert_sign, crl_sign

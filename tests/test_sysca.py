@@ -3,7 +3,8 @@ from typing import List, Tuple, Union
 
 import pytest
 from cryptography import x509
-from helpers import demo_bytes, demo_data, demo_fn, new_root
+from cryptography.x509.oid import SignatureAlgorithmOID
+from helpers import HAVE_PSS, demo_bytes, demo_data, demo_fn, new_root
 
 import sysca.api as sysca
 from sysca.files import autodetect_data, autodetect_file, autodetect_filename
@@ -161,7 +162,8 @@ def test_passthrough() -> None:
     info.show(lst1.append)
     info2.show(lst2.append)
     lst2 = [ln for ln in lst2 if not (
-        ln.startswith("Public key:") or ln.startswith("Subject Key Identifier:")
+        ln.startswith("Public key:") or ln.startswith("Subject Key Identifier:") or
+        ln.startswith("Signature:") or ln.startswith("Signature params:")
     )]
     assert lst1 == lst2
 
@@ -205,6 +207,7 @@ def test_autodetect() -> None:
 SAMPLE_SET_SERIAL = """\
 Version: 3
 Public key: ec:secp256r1
+Signature: ecdsa-with-SHA256
 Not Valid Before: 2010-06-22 14:00:59+00:00
 Not Valid After: 2050-01-03 14:00:59+00:00
 Serial: 01:e2:40
@@ -275,4 +278,25 @@ def test_parse_number() -> None:
 def test_load_pass() -> None:
     assert sysca.load_password(demo_fn("password.txt")) == b"password1"
     assert sysca.load_password(None) is None
+
+
+@pytest.mark.skipif(not HAVE_PSS, reason="Does not support RSA-PSS")
+def test_rsa_pss() -> None:
+    key = sysca.valid_issuer_private_key(sysca.load_key(demo_fn("rsa1.key")))
+    nopss_info = sysca.CertInfo(subject="CN=pss", ca=True)
+    nopss_req = sysca.create_x509_req(key, nopss_info)
+    nopss_info2 = sysca.CertInfo(load=nopss_req)
+    assert not nopss_info2.rsa_pss
+
+    pss_info = sysca.CertInfo(subject="CN=pss", ca=True, rsa_pss=True)
+    pss_req = sysca.create_x509_req(key, pss_info)
+    assert pss_req.signature_algorithm_oid == SignatureAlgorithmOID.RSASSA_PSS
+    pss_info2 = sysca.CertInfo(load=pss_req)
+    assert pss_info2.rsa_pss
+
+    cert = sysca.create_x509_cert(key, key.public_key(), nopss_info2, pss_info2, days=5)
+    assert cert.signature_algorithm_oid == SignatureAlgorithmOID.RSASSA_PSS
+
+    cert = sysca.create_x509_cert(key, key.public_key(), pss_info2, nopss_info2, days=5)
+    assert cert.signature_algorithm_oid == SignatureAlgorithmOID.RSASSA_PSS
 

@@ -7,15 +7,17 @@ from typing import (
 )
 
 from cryptography import x509
-from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import (
-    AuthorityInformationAccessOID, CRLEntryExtensionOID, ExtensionOID,
+    AuthorityInformationAccessOID, CRLEntryExtensionOID,
+    ExtensionOID, SignatureAlgorithmOID,
 )
 
 from .certinfo import CertInfo
 from .compat import (
-    GNameList, IssuerPrivateKeyTypes, MaybeList, MaybeNumber, MaybeTimestamp,
-    NameSeq, TypeAlias, get_utc_datetime, get_utc_datetime_opt,
+    GNameList, IssuerPrivateKeyTypes, MaybeList, MaybeNumber,
+    MaybeTimestamp, NameSeq, SignatureParamsType, TypeAlias,
+    get_utc_datetime, get_utc_datetime_opt,
 )
 from .exceptions import InvalidCertificate
 from .formats import (
@@ -23,7 +25,9 @@ from .formats import (
     maybe_parse_timestamp, parse_time_period, render_name,
     render_serial, show_list, to_hex, to_issuer_gnames,
 )
-from .keys import get_hash_algo, safe_issuer_privkey
+from .keys import (
+    get_hash_algo, get_param_info, get_rsa_padding, safe_issuer_privkey,
+)
 from .objects import (
     convert_urls_to_gnames, extract_auth_access,
     extract_distribution_point_urls, extract_gnames,
@@ -92,7 +96,7 @@ class RevCertInfo:
             builder = builder.serial_number(self.serial_number)
         builder = builder.revocation_date(self.revocation_date)
         builder = self.install_extensions(builder, indirect_crl, cur_gnames)
-        return builder.build(default_backend())
+        return builder.build()
 
     def install_extensions(self,
                            builder: x509.RevokedCertificateBuilder,
@@ -171,6 +175,9 @@ class CRLInfo:
     next_update: Optional[datetime]
     last_update: Optional[datetime]
     issuer_name: NameSeq
+    signature_algorithm_oid: Optional[x509.ObjectIdentifier]
+    signature_algorithm_parameters: Optional[SignatureParamsType]
+    rsa_pss: bool
 
     # CRLNumber
     crl_number: Optional[int]
@@ -212,6 +219,7 @@ class CRLInfo:
                  issuer_urls: Optional[MaybeList] = None,
                  ocsp_urls: Optional[MaybeList] = None,
                  delta_crl_urls: Optional[MaybeList] = None,
+                 rsa_pss: bool = False,
                  load: Optional[x509.CertificateRevocationList] = None):
         """Initialize info object.
         """
@@ -219,6 +227,9 @@ class CRLInfo:
         self.next_update = maybe_parse_timestamp(next_update)
         self.last_update = maybe_parse_timestamp(last_update)
         self.issuer_name = ()
+        self.signature_algorithm_oid = None
+        self.signature_algorithm_parameters = None
+        self.rsa_pss = rsa_pss
 
         # CRLNumber
         self.crl_number = maybe_parse_number(crl_number)
@@ -258,6 +269,16 @@ class CRLInfo:
         self.issuer_name = extract_name(obj.issuer)
         self.next_update = get_utc_datetime_opt(obj, "next_update")
         self.last_update = get_utc_datetime(obj, "last_update")
+
+        self.signature_algorithm_oid = obj.signature_algorithm_oid
+        if self.signature_algorithm_oid:
+            if self.signature_algorithm_oid == SignatureAlgorithmOID.RSASSA_PSS:
+                self.rsa_pss = True
+        try:
+            signature_algorithm_parameters = getattr(obj, "signature_algorithm_parameters", None)
+        except ValueError:
+            signature_algorithm_parameters = None
+        self.signature_algorithm_parameters = signature_algorithm_parameters
 
         for ext in obj.extensions:
             extobj = ext.value
@@ -394,15 +415,6 @@ class CRLInfo:
     def show(self, writeln: Callable[[str], None]) -> None:
         """Print out details.
         """
-        if self.issuer_name:
-            writeln("Issuer Name: %s" % render_name(self.issuer_name))
-        show_list("Issuer SAN", self.issuer_san, writeln)
-        if self.authority_key_identifier:
-            writeln("Authority Key Identifier: %s" % self.authority_key_identifier)
-        if self.authority_cert_serial_number:
-            writeln("Authority Certificate Serial: %s" % render_serial(self.authority_cert_serial_number))
-        if self.authority_cert_issuer:
-            writeln("Authority Certificate Issuer: %s" % render_name(self.authority_cert_issuer))
         writeln("CRL Scope: %s" % self.crl_scope)
         if self.crl_number is not None:
             writeln("CRL Number: %s" % render_serial(self.crl_number))
@@ -414,6 +426,23 @@ class CRLInfo:
             writeln("Next update: %s" % self.next_update.isoformat(" "))
         if self.indirect_crl:
             writeln("Indirect CRL: True")
+        if self.signature_algorithm_oid:
+            signame = getattr(self.signature_algorithm_oid, "_name", "")
+            if signame:
+                writeln("Signature: %s" % signame)
+            else:
+                writeln("Signature: %s" % self.signature_algorithm_oid.dotted_string)
+        if self.signature_algorithm_parameters and self.rsa_pss:
+            writeln("Signature params: %s" % get_param_info(self.signature_algorithm_parameters))
+        if self.issuer_name:
+            writeln("Issuer Name: %s" % render_name(self.issuer_name))
+        show_list("Issuer SAN", self.issuer_san, writeln)
+        if self.authority_key_identifier:
+            writeln("Authority Key Identifier: %s" % self.authority_key_identifier)
+        if self.authority_cert_serial_number:
+            writeln("Authority Certificate Serial: %s" % render_serial(self.authority_cert_serial_number))
+        if self.authority_cert_issuer:
+            writeln("Authority Certificate Issuer: %s" % render_name(self.authority_cert_issuer))
         if self.only_some_reasons:
             show_list("OnlySomeReasons", list(sorted(self.only_some_reasons)), writeln)
         show_list("Full Methods", self.full_methods, writeln)
@@ -495,8 +524,13 @@ def create_x509_crl(issuer_privkey: IssuerPrivateKeyTypes,
     ext = x509.AuthorityKeyIdentifier.from_issuer_public_key(issuer_privkey.public_key())
     builder = builder.add_extension(ext, critical=False)
 
-    crl = builder.sign(private_key=issuer_privkey,
-                       algorithm=get_hash_algo(issuer_privkey, "CRL"),
-                       backend=default_backend())
+    rsa_pss = crl_info.rsa_pss or issuer_info.rsa_pss
+    if rsa_pss and isinstance(issuer_privkey, rsa.RSAPrivateKey):
+        crl = builder.sign(private_key=issuer_privkey,
+                           algorithm=get_hash_algo(issuer_privkey, "CRL"),
+                           rsa_padding=get_rsa_padding(issuer_privkey, "CRL"))
+    else:
+        crl = builder.sign(private_key=issuer_privkey,
+                           algorithm=get_hash_algo(issuer_privkey, "CRL"))
     return crl
 

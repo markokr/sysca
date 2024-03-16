@@ -5,9 +5,8 @@ import os
 from typing import List, Optional, Sequence, Union
 
 from cryptography import x509
-from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import (
-    dh, dsa, ec, ed448, ed25519, rsa, x448, x25519,
+    dh, dsa, ec, ed448, ed25519, padding, rsa, utils, x448, x25519,
 )
 from cryptography.hazmat.primitives.hashes import SHA256, SHA384, SHA512
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
@@ -15,7 +14,7 @@ from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 from .compat import (
     EC_CURVES, AllowedHashTypes, AllPrivateKeyClasses,
     AllPrivateKeyTypes, AllPublicKeyTypes, IssuerPrivateKeyClasses,
-    IssuerPrivateKeyTypes, SubjectPublicKeyClasses,
+    IssuerPrivateKeyTypes, SignatureParamsType, SubjectPublicKeyClasses,
     SubjectPublicKeyTypes, valid_private_key, valid_public_key,
 )
 from .exceptions import UnsupportedParameter
@@ -26,6 +25,7 @@ __all__ = (
     "new_dsa_key", "new_ec_key", "new_key", "new_rsa_key",
     "new_serial_number", "same_pubkey", "set_unsafe",
     "safe_subject_pubkey", "safe_issuer_privkey", "get_invalid_key_usage",
+    "get_param_info",
 )
 
 
@@ -86,12 +86,27 @@ def get_hash_algo(privkey: IssuerPrivateKeyTypes, ctx: str) -> Optional[AllowedH
     """
     if isinstance(privkey, (ed25519.Ed25519PrivateKey, ed448.Ed448PrivateKey)):
         return None
-    if isinstance(privkey, ec.EllipticCurvePrivateKey):
+    elif isinstance(privkey, ec.EllipticCurvePrivateKey):
         if privkey.key_size > 500:
             return SHA512()
         if privkey.key_size > 300:
             return SHA384()
+    elif isinstance(privkey, rsa.RSAPrivateKey):
+        if privkey.key_size > 4000:
+            return SHA512()
+        if privkey.key_size > 3000:
+            return SHA384()
     return SHA256()
+
+
+def get_rsa_padding(privkey: IssuerPrivateKeyTypes, ctx: str) -> Optional[padding.PSS]:
+    """Return signature hash algo based on privkey.
+    """
+    if not isinstance(privkey, rsa.RSAPrivateKey):
+        return None
+    algo = get_hash_algo(privkey, "PSS")
+    assert algo
+    return padding.PSS(padding.MGF1(algo), padding.PSS.DIGEST_LENGTH)
 
 
 def get_invalid_key_usage(pubkey: SubjectPublicKeyTypes) -> Sequence[str]:
@@ -134,7 +149,7 @@ def new_ec_key(
     if name == "ed448":
         return ed448.Ed448PrivateKey.generate()
     curve = get_curve_for_name(name)
-    return ec.generate_private_key(curve=curve, backend=default_backend())
+    return ec.generate_private_key(curve=curve)
 
 
 def new_rsa_key(bits: int = 2048) -> rsa.RSAPrivateKey:
@@ -142,7 +157,7 @@ def new_rsa_key(bits: int = 2048) -> rsa.RSAPrivateKey:
     """
     if not is_safe_bits(bits, SAFE_BITS_RSA):
         raise UnsupportedParameter("Bad value for RSA bits: %d" % bits)
-    return rsa.generate_private_key(key_size=bits, public_exponent=65537, backend=default_backend())
+    return rsa.generate_private_key(key_size=bits, public_exponent=65537)
 
 
 def new_dsa_key(bits: int = 2048) -> dsa.DSAPrivateKey:
@@ -150,7 +165,7 @@ def new_dsa_key(bits: int = 2048) -> dsa.DSAPrivateKey:
     """
     if not is_safe_bits(bits, SAFE_BITS_DSA):
         raise UnsupportedParameter("Bad value for DSA bits: %d" % bits)
-    return dsa.generate_private_key(key_size=bits, backend=default_backend())
+    return dsa.generate_private_key(key_size=bits)
 
 
 def new_key(keydesc: str = "ec") -> IssuerPrivateKeyTypes:
@@ -231,4 +246,38 @@ def new_serial_number() -> int:
     seed = int.from_bytes(os.urandom(20), "big", signed=False)
     # avoid sign problems by setting highest bit
     return (seed >> 1) | (1 << 158)
+
+
+def get_param_info(parm: SignatureParamsType) -> str:
+    if isinstance(parm, padding.PKCS1v15):
+        return "PKCS1v15"
+    if isinstance(parm, ec.ECDSA):
+        res = "ECDSA"
+        algo = parm.algorithm
+        if algo is not None:
+            if isinstance(algo, utils.Prehashed):
+                res += "/prehashed"
+            else:
+                res += "/" + algo.name
+        return res
+    if isinstance(parm, padding.PSS):
+        res = "PSS"
+        mgf = getattr(parm, "mgf")
+        if mgf is not None:
+            res += "/" + mgf.__class__.__name__
+            mgfalgo = getattr(mgf, "_algorithm", None)
+            if mgfalgo:
+                res += "/" + mgfalgo.name
+        salt = getattr(parm, "_salt_length", None)
+        if salt is not None:
+            if salt is padding.PSS.MAX_LENGTH:
+                res += "/MAX_LENGTH"
+            elif salt is padding.PSS.DIGEST_LENGTH:
+                res += "/DIGEST_LENGTH"
+            elif salt is padding.PSS.AUTO:
+                res += "/AUTO"
+            elif isinstance(salt, int):
+                res += "/" + str(salt)
+        return res
+    return "<unknown>"
 

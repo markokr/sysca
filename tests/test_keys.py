@@ -4,7 +4,6 @@ import tempfile
 from pathlib import Path
 
 import pytest
-from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 from helpers import demo_data, demo_fn, new_root
 
@@ -154,7 +153,7 @@ def ssh_kformat(prefix: str, password: str, tmp_key: str) -> None:
     assert pktxt2 == pktxt3
 
     # load ssh public key
-    pkload = sysca.load_ssh_public_key(pktxt2, default_backend())
+    pkload = sysca.load_ssh_public_key(pktxt2)
     pkloadtxt = pkload.public_bytes(Encoding.OpenSSH, PublicFormat.OpenSSH)
     assert pkloadtxt == pktxt2
 

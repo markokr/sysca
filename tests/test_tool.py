@@ -4,7 +4,6 @@ import sys
 from pathlib import Path
 
 from cryptography import x509
-from cryptography.hazmat.backends import default_backend
 from helpers import demo_data, demo_fn, demo_raw
 from pytest import CaptureFixture
 
@@ -183,8 +182,8 @@ def test_sign_reset(capsys: CaptureFixture[str]) -> None:
     assert "CERTIFICATE" in res.out
     cert2 = res.out.encode("utf8")
 
-    obj1 = x509.load_pem_x509_certificate(cert1, default_backend())
-    obj2 = x509.load_pem_x509_certificate(cert2, default_backend())
+    obj1 = x509.load_pem_x509_certificate(cert1)
+    obj2 = x509.load_pem_x509_certificate(cert2)
     info1 = CertInfo(load=obj1)
     info2 = CertInfo(load=obj2)
     assert info1.ca is True

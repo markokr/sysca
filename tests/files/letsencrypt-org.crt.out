@@ -1,5 +1,6 @@
 Version: 3
 Public key: rsa:2048
+Signature: sha256WithRSAEncryption
 Not Valid Before: 2019-07-15 22:06:38+00:00
 Not Valid After: 2019-10-13 22:06:38+00:00
 Serial: 04:20:9a:74:31:13:b4:ad:1f:04:97:25:48:d2:f9:54:cf:f8

@@ -5,7 +5,8 @@ from typing import List, Union
 
 import pytest
 from cryptography import x509
-from helpers import new_cert, new_root
+from cryptography.x509.oid import SignatureAlgorithmOID
+from helpers import HAVE_PSS, demo_fn, new_cert, new_root
 
 import sysca.api as sysca
 
@@ -39,13 +40,14 @@ def test_crl_delta() -> None:
     crlobj = sysca.create_x509_crl(ca_key, ca_cert, crlobj, 30)
 
     assert dump_crl(crlobj) == [
-        "Issuer Name: CN = CrlCA",
-        "Authority Key Identifier: KeyID",
         "CRL Scope: all",
         "CRL Number: 02",
         "Delta CRL Number: 01",
         "Last update: DT",
         "Next update: DT",
+        "Signature: ecdsa-with-SHA256",
+        "Issuer Name: CN = CrlCA",
+        "Authority Key Identifier: KeyID",
     ]
 
 
@@ -86,13 +88,14 @@ def test_crl_passthrough() -> None:
     lst2 = dump_crl(crl3)
     assert lst1 == lst2
     assert lst1 == [
-        "Issuer Name: CN = CrlCA",
-        "Issuer SAN: dn:/CN=CaCrl/",
-        "Authority Key Identifier: KeyID",
         "CRL Scope: all",
         "CRL Number: 0a",
         "Last update: DT",
         "Next update: DT",
+        "Signature: ecdsa-with-SHA256",
+        "Issuer Name: CN = CrlCA",
+        "Issuer SAN: dn:/CN=CaCrl/",
+        "Authority Key Identifier: KeyID",
         "Issuer URLs: http://issuer_urls",
         "OCSP URLs: http://ocsp_urls",
         "Delta CRL URLs: http://freshest_urls",
@@ -121,12 +124,13 @@ def test_direct_items() -> None:
     lst2 = dump_crl(crl2obj)
     assert lst1 == lst2
     assert lst1 == [
-        "Issuer Name: CN = DirectCrlCA",
-        "Authority Key Identifier: KeyID",
         "CRL Scope: all",
         "CRL Number: 0a",
         "Last update: DT",
         "Next update: DT",
+        "Signature: ecdsa-with-SHA256",
+        "Issuer Name: CN = DirectCrlCA",
+        "Authority Key Identifier: KeyID",
         "Revoked certificate:",
         "  Serial: SN",
         "  Revocation Date: DT",
@@ -227,4 +231,26 @@ def test_scope_items() -> None:
     crl2 = sysca.CRLInfo(load=crl2obj)
     assert crl2.indirect_crl is False
     assert crl2.full_methods == urls
+
+
+@pytest.mark.skipif(not HAVE_PSS, reason="Does not support RSA-PSS")
+def test_crl_rsa_pss() -> None:
+    key = sysca.valid_issuer_private_key(sysca.load_key(demo_fn("rsa1.key")))
+    pss_info = sysca.CertInfo(subject="CN=pss", ca=True, rsa_pss=True, load=key)
+    nopss_info = sysca.CertInfo(subject="CN=nopss", ca=True, load=key)
+
+    pss_cert = sysca.create_x509_cert(key, key.public_key(), pss_info, pss_info, days=5)
+    nopss_cert = sysca.create_x509_cert(key, key.public_key(), nopss_info, nopss_info, days=5)
+
+    crl = sysca.CRLInfo()
+    crl.add_serial_number(2)
+
+    pss_crl = sysca.create_x509_crl(key, pss_cert, crl, 10)
+    assert pss_crl.signature_algorithm_oid == SignatureAlgorithmOID.RSASSA_PSS
+
+    nopss_crl = sysca.create_x509_crl(key, nopss_cert, crl, 10)
+    assert nopss_crl.signature_algorithm_oid != SignatureAlgorithmOID.RSASSA_PSS
+
+    assert sysca.CRLInfo(load=pss_crl).rsa_pss
+    assert not sysca.CRLInfo(load=nopss_crl).rsa_pss
 

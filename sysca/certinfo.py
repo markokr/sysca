@@ -5,17 +5,17 @@ from datetime import datetime
 from typing import Callable, List, Optional, Sequence, TypeVar, Union
 
 from cryptography import x509
-from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import (
     AuthorityInformationAccessOID, ExtendedKeyUsageOID,
-    ExtensionOID, ObjectIdentifier,
+    ExtensionOID, ObjectIdentifier, SignatureAlgorithmOID,
 )
 
 from .compat import (
     GNameList, IssuerPrivateKeyTypes, IssuerPublicKeyTypes, MaybeList,
-    MaybeName, NameSeq, SubjectPrivateKeyClasses, SubjectPrivateKeyTypes,
-    SubjectPublicKeyClasses, SubjectPublicKeyTypes, TypeAlias,
-    get_utc_datetime, valid_issuer_private_key,
+    MaybeName, NameSeq, SignatureParamsType, SubjectPrivateKeyClasses,
+    SubjectPrivateKeyTypes, SubjectPublicKeyClasses, SubjectPublicKeyTypes,
+    TypeAlias, get_utc_datetime, valid_issuer_private_key,
     valid_subject_private_key, valid_subject_public_key,
 )
 from .exceptions import InvalidCertificate
@@ -24,7 +24,8 @@ from .formats import (
     parse_time_period, render_name, render_serial, show_list, to_hex,
 )
 from .keys import (
-    get_hash_algo, get_invalid_key_usage, get_key_name, new_serial_number,
+    get_hash_algo, get_invalid_key_usage, get_key_name,
+    get_param_info, get_rsa_padding, new_serial_number,
     safe_issuer_privkey, safe_subject_pubkey, same_pubkey,
 )
 from .objects import (
@@ -141,6 +142,8 @@ class CertInfo:
     unknown_extensions: List[str]
     public_key_object: Optional[SubjectPublicKeyTypes]
     signature_algorithm_oid: Optional[x509.ObjectIdentifier]
+    signature_algorithm_parameters: Optional[SignatureParamsType]
+    rsa_pss: bool
 
     # Subject
     subject: NameSeq
@@ -222,6 +225,7 @@ class CertInfo:
                  require_explicit_policy: Optional[int] = None,
                  inhibit_policy_mapping: Optional[int] = None,
                  certificate_policies: Optional[MaybeList] = None,
+                 rsa_pss: bool = False,
                  load: Optional[LoadTypes] = None) -> None:
         """Initialize info object.
 
@@ -294,6 +298,8 @@ class CertInfo:
         self.unknown_extensions = []
         self.public_key_object = None
         self.signature_algorithm_oid = None
+        self.signature_algorithm_parameters = None
+        self.rsa_pss = rsa_pss
 
         # Subject
         self.subject = maybe_parse_dn(subject)
@@ -391,8 +397,17 @@ class CertInfo:
             raise InvalidCertificate("Invalid obj type: %s" % type(obj))
 
         self.public_key_object = valid_subject_public_key(obj.public_key())
-        self.signature_algorithm_oid = obj.signature_algorithm_oid
         self.subject = extract_name(obj.subject)
+        self.signature_algorithm_oid = obj.signature_algorithm_oid
+        try:
+            signature_algorithm_parameters = getattr(obj, "signature_algorithm_parameters", None)
+        except ValueError:
+            signature_algorithm_parameters = None
+        self.signature_algorithm_parameters = signature_algorithm_parameters
+
+        if self.signature_algorithm_oid:
+            if self.signature_algorithm_oid == SignatureAlgorithmOID.RSASSA_PSS:
+                self.rsa_pss = True
 
         for ext in obj.extensions:
             extobj = ext.value
@@ -616,6 +631,8 @@ class CertInfo:
                 writeln("Signature: %s" % signame)
             else:
                 writeln("Signature: %s" % self.signature_algorithm_oid.dotted_string)
+        if self.signature_algorithm_parameters and self.rsa_pss:
+            writeln("Signature params: %s" % get_param_info(self.signature_algorithm_parameters))
         if self.not_valid_before:
             writeln("Not Valid Before: %s" % self.not_valid_before.isoformat(" "))
         if self.not_valid_after:
@@ -694,9 +711,13 @@ def create_x509_req(
     issuer_key = valid_issuer_private_key(privkey)
 
     # create final request
-    req = builder.sign(private_key=issuer_key,
-                       algorithm=get_hash_algo(issuer_key, "CSR"),
-                       backend=default_backend())
+    if subject_info.rsa_pss and isinstance(issuer_key, rsa.RSAPrivateKey):
+        req = builder.sign(private_key=issuer_key,
+                           algorithm=get_hash_algo(issuer_key, "CSR"),
+                           rsa_padding=get_rsa_padding(issuer_key, "CSR"))
+    else:
+        req = builder.sign(private_key=issuer_key,
+                           algorithm=get_hash_algo(issuer_key, "CSR"))
     return req
 
 
@@ -727,7 +748,7 @@ def create_x509_cert(
     days: Optional[int] = None,
     serial_number: Optional[Union[str, int]] = None,
     not_valid_before: Optional[Union[str, datetime]] = None,
-    not_valid_after: Optional[Union[str, datetime]] = None
+    not_valid_after: Optional[Union[str, datetime]] = None,
 ) -> x509.Certificate:
     """Create x509.Certificate
     """
@@ -779,8 +800,13 @@ def create_x509_cert(
     )
 
     # final cert
-    cert = builder.sign(private_key=issuer_privkey,
-                        algorithm=get_hash_algo(issuer_privkey, "CRT"),
-                        backend=default_backend())
+    rsa_pss = subject_info.rsa_pss or issuer_info.rsa_pss
+    if rsa_pss and isinstance(issuer_privkey, rsa.RSAPrivateKey):
+        cert = builder.sign(private_key=issuer_privkey,
+                            algorithm=get_hash_algo(issuer_privkey, "CRT"),
+                            rsa_padding=get_rsa_padding(issuer_privkey, "CRT"))
+    else:
+        cert = builder.sign(private_key=issuer_privkey,
+                            algorithm=get_hash_algo(issuer_privkey, "CRT"))
     return cert
 

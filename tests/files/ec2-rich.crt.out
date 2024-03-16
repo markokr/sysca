@@ -1,5 +1,6 @@
 Version: 3
 Public key: ec:secp256r1
+Signature: ecdsa-with-SHA256
 Not Valid Before: 1995-12-24 00:00:00+00:00
 Not Valid After: 2195-12-24 00:00:00+00:00
 Serial: ff

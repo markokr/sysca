@@ -3,11 +3,14 @@ import binascii
 import os.path
 from typing import Any, Tuple, Union
 
+import cryptography
 from cryptography import x509
 
 from sysca import api as sysca
 
 _FDIR = os.path.join(os.path.dirname(__file__), "files")
+
+HAVE_PSS = int(cryptography.__version__.split(".", maxsplit=1)[0]) >= 42
 
 
 def demo_fn(basename: str) -> str:

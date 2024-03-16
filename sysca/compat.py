@@ -11,7 +11,7 @@ from typing import (
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import (
-    dh, dsa, ec, ed448, ed25519, rsa, x448, x25519,
+    dh, dsa, ec, ed448, ed25519, padding, rsa, x448, x25519,
 )
 
 try:
@@ -38,6 +38,7 @@ __all__ = (
     "NameSeq", "GNameList",
     "MaybeList", "MaybeName",
     "MaybeTimestamp", "MaybeNumber",
+    "SignatureParamsType",
     "valid_issuer_public_key",
     "valid_issuer_private_key",
     "valid_subject_public_key",
@@ -123,6 +124,8 @@ AllowedHashTypes: TypeAlias = Union[
     hashes.SHA384,
     hashes.SHA512,
 ]
+
+SignatureParamsType: TypeAlias = Union[padding.PKCS1v15, padding.PSS, ec.ECDSA]
 
 
 def get_utc_datetime_opt(obj: Any, field: str) -> Optional[datetime]:

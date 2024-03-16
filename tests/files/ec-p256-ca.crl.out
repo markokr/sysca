@@ -1,9 +1,10 @@
-Issuer Name: CN = ecreq
-Authority Key Identifier: 0d60f448426711c74637176e19ce725470431e5f
 CRL Scope: all
 CRL Number: 01
 Last update: 2005-02-02 00:00:00+00:00
 Next update: 2045-05-15 00:00:00+00:00
+Signature: ecdsa-with-SHA256
+Issuer Name: CN = ecreq
+Authority Key Identifier: 0d60f448426711c74637176e19ce725470431e5f
 Revoked certificate:
   Serial: 02
   Revocation Date: 2019-05-19 00:00:00+00:00

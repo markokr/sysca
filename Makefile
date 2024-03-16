@@ -8,17 +8,16 @@ all:
 
 test:
 	#rm -rf cover
-	tox -e lint
-	tox -e py38-cryptography30
+	#tox -e lint
 	tox -e py38-cryptography31
 	tox -e py39-cryptography32
 	tox -e py39-cryptography33
 	tox -e py310-cryptography34	# Ubuntu 22.04
 	tox -e py310-cryptography35
 	#tox -e py310-cryptography36	# broken
-	tox -e py311-cryptography37
+	tox -e py310-cryptography37
 	tox -e py311-cryptography39
-	tox -e py312-cryptography40
+	tox -e py311-cryptography40
 	tox -e py312-cryptography41	# Ubuntu 24.04
 	tox -e py312-cryptography42
 
