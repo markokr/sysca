@@ -7,8 +7,8 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 from typing import (
-    TYPE_CHECKING, Any, Callable, Dict, List,
-    Optional, Sequence, Tuple, TypedDict, Union, cast,
+    TYPE_CHECKING, Any, Callable, Dict, List, Optional,
+    Sequence, Tuple, Type, TypedDict, Union, cast,
 )
 
 from cryptography import x509
@@ -505,7 +505,7 @@ def autogen_command(args: argparse.Namespace) -> None:
 
 
 def opts_password(p: GParser) -> None:
-    p.add_argument("--password-file", metavar="FN", help="File to load password from")
+    p.add_argument("--password-file", metavar="PSW_FILE", help="File to load password from")
 
 
 def opts_text(p: GParser) -> None:
@@ -517,9 +517,9 @@ def opts_unsafe(p: GParser) -> None:
 
 
 def opts_output(p: GParser) -> None:
-    p.add_argument("--out", metavar="FN",
+    p.add_argument("--out", metavar="OUT_FILE",
                    help="File to write output to, instead stdout")
-    p.add_argument("--outform", default="PEM",
+    p.add_argument("--outform", metavar="FMT", default="PEM",
                    help="Select output format: PEM|DER.  Default: PEM")
 
 
@@ -529,30 +529,30 @@ def opts_reset(p: GParser) -> None:
 
 
 def opts_request(p: GParser) -> None:
-    p.add_argument("--request", metavar="FN", required=True,
+    p.add_argument("--request", metavar="CSR_FILE", required=True,
                    help="Filename of certificate request (CSR) to be signed.")
 
 
 def opts_key(p: GParser) -> None:
-    p.add_argument("--key", metavar="FN", required=True, help="Private key file")
+    p.add_argument("--key", metavar="KEY_FILE", required=True, help="Private key file")
 
 
 def opts_ca_key(p: GParser) -> None:
-    p.add_argument("--ca-key", metavar="FN", required=True,
-                   help="Private key file.")
-    p.add_argument("--ca-info", metavar="FN", required=True,
+    p.add_argument("--ca-info", metavar="CRT_FILE", required=True,
                    help="Filename of CA details (CRT or CSR).")
+    p.add_argument("--ca-key", metavar="KEY_FILE", required=True,
+                   help="CA private key file.")
 
 
 def opts_signing(p: GParser) -> None:
+    p.add_argument("--not-valid-before", metavar="DATE",
+                   help="Start of validity period, default: (now - 1h)")
+    p.add_argument("--not-valid-after", metavar="DATE",
+                   help="End of validity period, default: (now + DAYS)")
     p.add_argument("--days", type=int,
                    help="Certificate lifetime in days from now")
-    p.add_argument("--not-valid-before",
-                   help="Timestamp of validity period start")
-    p.add_argument("--not-valid-after",
-                   help="Timestamp of validity period end")
     p.add_argument("--serial-number", metavar="SN",
-                   help="Disable automatic serial number generation.")
+                   help="Use SN instead automatically generated serial number.")
 
 
 def opts_rsa_pss(p: GParser) -> None:
@@ -561,49 +561,44 @@ def opts_rsa_pss(p: GParser) -> None:
 
 
 def opts_cert_fields(p: GParser) -> None:
-    p.add_argument("--subject",
+    p.add_argument("--subject", metavar="DN",
                    help="Subject Distinguished Name - /CN=foo/O=Org/OU=Web/")
     p.add_argument("--san", metavar="GNAMES",
-                   help="SubjectAltNames - dns:hostname, email:addrspec, ip:ipaddr, uri:url, dn:DirName.")
+                   help=("SubjectAltNames - dns:hostname, email:addrspec, ip:ipaddr,"
+                         " uri:url, dn:distinguishedName."))
+    p.add_argument("--usage",
+                   help="Keywords: client, server, code, email, time, ocsp.")
     p.add_argument("--CA", action="store_true",
                    help="Request CA cert.  Default: not set.")
     p.add_argument("--path-length", type=int, default=None, metavar="DEPTH",
-                   help="Max levels of sub-CAs.  Default: 0")
-    p.add_argument("--usage",
-                   help="Keywords: client, server, code, email, time, ocsp.")
-    p.add_argument("--ocsp-urls", metavar="URLS",
-                   help="URLs for OCSP info.")
-    p.add_argument("--ocsp-nocheck", action="store_true",
-                   help="Disable OCSP check.")
-    p.add_argument("--ocsp-must-staple", action="store_true",
-                   help="OCSP Must-Staple.")
-    p.add_argument("--ocsp-must-staple-v2", action="store_true",
-                   help="OCSP Must-Staple V2.")
+                   help="Max levels of sub-CAs.  Default: not set")
     p.add_argument("--crl-urls", metavar="URLS",
                    help="URLs URL for CRL data.")
     p.add_argument("--issuer-urls", metavar="URLS",
                    help="URLs for issuer cert.")
+    p.add_argument("--ocsp-urls", metavar="URLS",
+                   help="URLs for OCSP info.")
+    p.add_argument("--ocsp-must-staple", action="store_true",
+                   help="OCSP Must-Staple.")
+    p.add_argument("--ocsp-must-staple-v2", action="store_true",
+                   help="OCSP Must-Staple V2.")
+    p.add_argument("--ocsp-nocheck", action="store_true",
+                   help="Disable OCSP check.")
     p.add_argument("--permit-subtrees", metavar="GNAMES",
                    help="Allowed NameConstraints.")
     p.add_argument("--exclude-subtrees", metavar="GNAMES",
                    help="Disallowed NameConstraints.")
-    p.add_argument("--inhibit-any", metavar="N", type=int,
-                   help="Number of levels after which <anyPolicy> policy is ignored.")
     p.add_argument("--require-explicit-policy", metavar="N", type=int,
                    help="Number of levels after which certificate policy is required.")
     p.add_argument("--inhibit-policy-mapping", metavar="N", type=int,
                    help="Number of levels after which policy mapping is disallowed.")
+    p.add_argument("--inhibit-any", metavar="N", type=int,
+                   help="Number of levels after which <anyPolicy> policy is ignored.")
     p.add_argument("--add-policy", metavar="POLICY", type=str, action="append",
                    help="Add policy.  Value is OID:/T=qualifier1/,/T=qualifier2/")
 
 
-def opts_crl(p: GParser) -> None:
-    p.add_argument("--crl", metavar="FN",
-                   help="Filename of certificate revocation list (CRL) to be updated.")
-    p.add_argument("--crl-number", metavar="VER",
-                   help="Version number for main CRL")
-    p.add_argument("--delta-crl-number", metavar="VER",
-                   help="Version number for parent CRL")
+def opts_crl_entry(p: GParser) -> None:
     p.add_argument("--revoke-certs", metavar="FN", nargs="+",
                    help="Certificate files to add")
     p.add_argument("--revoke-serials", metavar="NUM", nargs="+",
@@ -611,19 +606,28 @@ def opts_crl(p: GParser) -> None:
     p.add_argument("--reason",
                    help="Reason for revocation: %s" % ", ".join(CRL_REASON.keys()))
     p.add_argument("--invalidity-date", metavar="DATE",
-                   help="Consider certificate invalid from date")
+                   help="Consider certificate invalid from DATE")
     p.add_argument("--revocation-date", metavar="DATE",
-                   help="Disable default timestamp")
+                   help="Use DATE instead current timestamp")
+
+
+def opts_crl(p: GParser) -> None:
+    p.add_argument("--crl", metavar="CRL_FILE",
+                   help="Filename of certificate revocation list (CRL) to be updated.")
+    p.add_argument("--crl-number", metavar="VER",
+                   help="Version number for main CRL")
+    p.add_argument("--delta-crl-number", metavar="VER",
+                   help="Version number for parent CRL")
     p.add_argument("--crl-scope", metavar="SCOPE",
                    help="Score for types of certificates in CRL, one of: all, user, ca, attr.  Default: all")
     p.add_argument("--crl-reasons", metavar="REASONS",
                    help="Limit CRL scope to only list of reasons")
+    p.add_argument("--indirect-crl", action="store_true",
+                   help="Set Indirect-CRL flag")
     p.add_argument("--issuer-urls", metavar="URLS",  # DBL
                    help="URLs for issuer cert.")
     p.add_argument("--delta-crl-urls", metavar="URLS",
                    help="Delta CRL URLs")
-    p.add_argument("--indirect-crl", action="store_true",
-                   help="Set Indirect-CRL flag")
     p.add_argument("--last-update", metavar="DATE",
                    help="Set last_update explicitly instead using current timestamp.")
     p.add_argument("--next-update", metavar="DATE",
@@ -646,21 +650,31 @@ def opts_file(p: GParser) -> None:
 def opts_files(p: GParser) -> None:
     p.add_argument("file", help="File(s) to show", nargs="+")
 
+
 #
 # collect per-command switches
 #
+
+class CustomFormatter(argparse.HelpFormatter):
+    def __init__(self, prog: str) -> None:
+        super().__init__(prog, max_help_position=26)
 
 
 class HelpArgs(TypedDict):
     help: str
     description: str
+    formatter_class: Type[argparse.HelpFormatter]
 
 
 def loadhelp(func: Callable[[SubParser], None]) -> HelpArgs:
     """Convert docstring to add_parser() args
     """
     doc = (func.__doc__ or "").strip()
-    return {"help": doc, "description": doc}
+    return {
+        "help": doc,
+        "description": doc,
+        "formatter_class": CustomFormatter,
+    }
 
 
 def setup_args_newkey(sub: SubParser) -> None:
@@ -757,6 +771,9 @@ def setup_args_update_crl(sub: SubParser) -> None:
     g = p.add_argument_group("CRL fields")
     opts_crl(g)
 
+    g = p.add_argument_group("Add revoked certificates")
+    opts_crl_entry(g)
+
 
 def setup_args_export(sub: SubParser) -> None:
     """Reformat file
@@ -836,12 +853,12 @@ def setup_args_autogen(sub: SubParser) -> None:
 def setup_args() -> argparse.ArgumentParser:
     """Create ArgumentParser
     """
-
     top = argparse.ArgumentParser(
         prog="sysca",
         description="Run any COMMAND with --help switch to get command-specific help.",
         fromfile_prefix_chars="@",
         allow_abbrev=False,
+        formatter_class=CustomFormatter,
     )
     opts_top(top)
     opts_unsafe(top)

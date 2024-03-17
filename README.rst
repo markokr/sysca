@@ -36,40 +36,53 @@ Generate new key::
 
 Create certificate signing request::
 
-    sysca request --key KEY_FILE [--password-file TXT_FILE]
-                  [--subject DN] [--san ALTNAMES]
-                  [--CA] [--path-length DEPTH]
-                  [--usage FLAGS] [--ocsp-urls URLS] [--crl-urls URLS]
-                  [--issuer-urls URLS]
-                  [--out CSR_FN]
+    sysca request [-h] --key KEY_FILE [--password-file PSW_FILE]
+                  [--out OUT_FILE] [--outform FMT] [--text] [--rsa-pss]
+                  [--subject DN] [--san GNAMES] [--usage USAGE] [--CA] [--path-length DEPTH]
+                  [--crl-urls URLS] [--issuer-urls URLS] [--ocsp-urls URLS]
+                  [--ocsp-must-staple] [--ocsp-must-staple-v2] [--ocsp-nocheck]
+                  [--permit-subtrees GNAMES] [--exclude-subtrees GNAMES]
+                  [--require-explicit-policy N] [--inhibit-policy-mapping N]
+                  [--inhibit-any N] [--add-policy POLICY]
 
 Create selfsigned certificate::
 
-    sysca selfsign --key KEY_FILE --days N [--password-file TXT_FILE]
-                  [--subject DN] [--san ALTNAMES]
-                  [--CA] [--path-length DEPTH]
-                  [--usage FLAGS] [--ocsp-urls URLS] [--crl-urls URLS]
-                  [--issuer-urls URLS]
-                  [--out CRT_FN]
+    sysca selfsign [-h] [--out OUT_FILE] [--outform FMT] [--text]
+                   --key KEY_FILE [--password-file PSW_FILE]
+                   [--not-valid-before DATE] [--not-valid-after DATE] [--days DAYS]
+                   [--serial-number SN] [--rsa-pss]
+                   [--subject DN] [--san GNAMES] [--usage USAGE] [--CA] [--path-length DEPTH]
+                   [--crl-urls URLS] [--issuer-urls URLS] [--ocsp-urls URLS]
+                   [--ocsp-must-staple] [--ocsp-must-staple-v2] [--ocsp-nocheck]
+                   [--permit-subtrees GNAMES] [--exclude-subtrees GNAMES]
+                   [--require-explicit-policy N] [--inhibit-policy-mapping N]
+                   [--inhibit-any N] [--add-policy POLICY]
 
 Sign certificate signing request::
 
-    sysca sign --ca-key KEY_FILE --ca-info CRT_FILE
-               --request CSR_FILE --days NUM
-               [--out CRT_FN] [--password-file TXT_FILE]
-               [--reset] [--subject DN] [--san ALTNAMES]
-               [--CA] [--path-length DEPTH]
-               [--usage FLAGS] [--ocsp-urls URLS] [--crl-urls URLS]
-               [--issuer-urls URLS]
+    sysca sign [-h] [--out OUT_FILE] [--outform FMT] [--text] --request CSR_FILE
+               --ca-info CRT_FILE --ca-key KEY_FILE [--password-file PSW_FILE]
+               [--not-valid-before DATE] [--not-valid-after DATE] [--days DAYS]
+               [--serial-number SN] [--reset] [--rsa-pss]
+               [--subject DN] [--san GNAMES] [--usage USAGE] [--CA] [--path-length DEPTH]
+               [--crl-urls URLS] [--issuer-urls URLS] [--ocsp-urls URLS]
+               [--ocsp-must-staple] [--ocsp-must-staple-v2] [--ocsp-nocheck]
+               [--permit-subtrees GNAMES] [--exclude-subtrees GNAMES]
+               [--require-explicit-policy N] [--inhibit-policy-mapping N]
+               [--inhibit-any N] [--add-policy POLICY]
+
 
 Create or update CRL file::
 
-    sysca update-crl [--crl CRL_FILE] [--out CRT_FN]
-               --ca-key KEY_FILE --ca-info CRT_FILE [--password-file TXT_FILE]
-               --days NUM [--crl-number NUM] [--delta-crl-number NUM]
-               [--reason REASON_NAME]
-               [--revoke-cert CERT_FILE] ...
-               [--revoke-serial SERIAL] ...
+    sysca update-crl [-h] [--out OUT_FILE] [--outform FMT] [--text]
+                     --ca-info CRT_FILE --ca-key KEY_FILE [--password-file PSW_FILE]
+                     [--crl CRL_FILE] [--crl-number VER] [--delta-crl-number VER]
+                     [--crl-scope SCOPE] [--crl-reasons REASONS] [--indirect-crl]
+                     [--issuer-urls URLS] [--delta-crl-urls URLS]
+                     [--last-update DATE] [--next-update DATE] [--days DAYS]
+                     [--revoke-certs FN [FN ...]]
+                     [--revoke-serials NUM [NUM ...]]
+                     [--reason REASON] [--invalidity-date DATE] [--revocation-date DATE]
 
 Display contents of CRT, CSR or CRL file::
 
@@ -109,18 +122,25 @@ Create certificate signing request (CSR).
 
 Options:
 
-**--out CSR_FILE**
-    Target file to write Certificate Signing Request to.
-
-**--outform PEM|DER**
-    Output file format.  PEM is textual format, DER is binary.  Default: PEM.
-
 **--key KEY_FILE**
     Private key file to create request for.  Can be PGP-encrypted.
     Can be password-protected.
 
 **--password-file FN**
     Password file for private key.  Can be PGP-encrypted.
+
+**--out CSR_FILE**
+    Target file to write Certificate Signing Request to.
+
+**--outform PEM|DER**
+    Output file format.  PEM is textual format, DER is binary.  Default: PEM.
+
+**--rsa-pss**
+    Use RSA-PSS padding when signing with RSA key.  Note that this setting will
+    be inherited - certificate will be signed with RSA-PSS if either this flag
+    is given, CA certificate uses RSA-PSS or CSR uses RSA-PSS.
+
+Certifiace fields:
 
 **--subject DN**
     Subject's DistinguishedName which is X509 Name structure, which is collection
@@ -144,19 +164,7 @@ Options:
 
     Certificate field: Subject_.
 
-**--CA**
-    The certificate will have CA rights - that means it can
-    sign other certificates.
-
-    Extension: BasicConstraints_.
-
-**--path-length**
-    Applies only for CA certs - limits how many levels on sub-CAs
-    can exist under generated certificate.  Default: Undefined.
-
-    Extension: BasicConstraints_.
-
-**--san ALT_NAMES**
+**--san GNAMES**
     Specify alternative names for subject as list of comma-separated
     strings, that have prefix that describes data type.
 
@@ -226,11 +234,36 @@ Options useful only when apps support them:
         decipher_only
             If ``key_agreement`` is true, this flag limits use only for data decryption.
 
-**--ocsp-nocheck**
-    Disable OCSP checking for this certificate.  Used for certificates that
-    sign OCSP status replies.
+**--CA**
+    The certificate will have CA rights - that means it can
+    sign other certificates.
 
-    Extension: OCSPNoCheck_.
+    Extension: BasicConstraints_.
+
+**--path-length**
+    Applies only for CA certs - limits how many levels on sub-CAs
+    can exist under generated certificate.  Default: Undefined.
+
+    Extension: BasicConstraints_.
+
+**--crl-urls URLS**
+    List of URLs where certificate revocation lists can be downloaded.
+
+    Extension: CRLDistributionPoints_.
+
+**--issuer-urls URLS**
+    List of URLS where parent certificate can be downloaded,
+    in case the parent CA is not root CA.  Usually sub-CA certificates
+    should be provided during key-agreement (TLS).  This setting
+    is for situations where this cannot happen or for fallback
+    for badly-configured TLS servers.
+
+    Extension: AuthorityInformationAccess_.
+
+**--ocsp-urls URLS**
+    List of URL for OCSP endpoint where validity can be checked.
+
+    Extension: AuthorityInformationAccess_.
 
 **--ocsp-must-staple**
     Requires that TLS handshake must be done with stapled OCSP response
@@ -244,28 +277,11 @@ Options useful only when apps support them:
 
     Extension: OCSPMustStapleV2_.
 
-**--crl-urls URLS**
-    List of URLs where certificate revocation lists can be downloaded.
+**--ocsp-nocheck**
+    Disable OCSP checking for this certificate.  Used for certificates that
+    sign OCSP status replies.
 
-    Extension: CRLDistributionPoints_.
-
-**--ocsp-urls URLS**
-    List of URL for OCSP endpoint where validity can be checked.
-
-    Extension: AuthorityInformationAccess_.
-
-**--issuer-urls URLS**
-    List of URLS where parent certificate can be downloaded,
-    in case the parent CA is not root CA.  Usually sub-CA certificates
-    should be provided during key-agreement (TLS).  This setting
-    is for situations where this cannot happen or for fallback
-    for badly-configured TLS servers.
-
-    Extension: AuthorityInformationAccess_.
-
-**--exclude-subtrees NAME_PATTERNS**
-    Disallow CA to sign subjects that match patterns.  See ``--permit-subtrees``
-    for details.
+    Extension: OCSPNoCheck_.
 
 **--permit-subtrees NAME_PATTERNS**
     Allow CA to sign subjects that match patterns.
@@ -289,11 +305,9 @@ Options useful only when apps support them:
 
     Extension: NameConstraints_.
 
-**--inhibit-any N**
-    Disallow special handling of ``any`` policy (2.5.29.32.0)
-    after N levels.
-
-    Extension: InhibitAnyPolicy_.
+**--exclude-subtrees NAME_PATTERNS**
+    Disallow CA to sign subjects that match patterns.  See ``--permit-subtrees``
+    for details.
 
 **--require-explicit-policy N**
     Require explicit certificate policy for whole path after N levels.
@@ -304,6 +318,12 @@ Options useful only when apps support them:
     Disallow policy mapping processing after N levels.
 
     Extension: PolicyConstraints_.
+
+**--inhibit-any N**
+    Disallow special handling of ``any`` policy (2.5.29.32.0)
+    after N levels.
+
+    Extension: InhibitAnyPolicy_.
 
 **--add-policy OID:SPECS**
     Add another PolicyInformation record to certificate with optional qualifiers.
@@ -321,11 +341,6 @@ Options useful only when apps support them:
     Qualifier spec for UserNotice with explicitText and noticeRef: ``|T=explicit_text|O=orgName|N=1:2:3|``
 
     Extension: CertificatePolicies_.
-
-**--rsa-pss**
-    Use RSA-PSS padding when signing with RSA key.  Note that this setting will
-    be inherited - certificate will be signed with RSA-PSS if either this flag
-    is given, CA certificate uses RSA-PSS or CSR uses RSA-PSS.
 
 sign
 ~~~~
@@ -347,26 +362,43 @@ Options:
 **--outform PEM|DER**
     Output file format.  PEM is textual format, DER is binary.  Default: PEM.
 
-**--days NUM**
-    Lifetime for certificate in days.
-
 **--request CSR_FILE**
     Certificate request file generated by **request** command.
-
-**--ca-key KEY_FILE**
-    CA private key file.  Can be PGP-encrypted.
-    Can be password-protected.
 
 **--ca-info CRT_FILE**
     CRT file generated by **request** command.  Issuer CA info
     will be loaded from it.
 
+**--ca-key KEY_FILE**
+    CA private key file.  Can be PGP-encrypted.
+    Can be password-protected.
+
 **--password-file FN**
     Password file for CA private key.  Can be PGP-encrypted.
 
+**--not-valid-before DATE**
+    Start of validity period, default: (now - 1h)
+
+**--not-valid-after DATE**
+    End of validity period, default: (now + days)
+
+**--days DAYS**
+    Lifetime for certificate in days.
+
+**--serial-number SN**
+    Use SN instead automatically generated serial number.
+
 **--reset**
     Do not use any info fields from CSR, reload all info from command line.
-    Without it, command line arguments override corresponding fields from CSR.
+    Without it, CSR fields are used and command line arguments can override
+    corresponding fields in CSR.
+
+**--rsa-pss**
+    Use RSA-PSS padding when signing with RSA key.  Note that this setting will
+    be inherited - certificate will be signed with RSA-PSS if either this flag
+    is given, CA certificate uses RSA-PSS or CSR uses RSA-PSS.
+
+Certificate fields are the same as in ``request`` command.
 
 selfsign
 ~~~~~~~~
@@ -396,10 +428,7 @@ CRL file can be either direct or indirect:
         Revoked certificates contain reference to actual CA that issued.
         Set with option: ``--indirect-crl``.
 
-Options for CRL itself:
-
-**--crl FN**
-    Load existing file.  Version numbers are reused unless overrided on command line.
+Output options:
 
 **--out FN**
     Write output to file.
@@ -407,14 +436,21 @@ Options for CRL itself:
 **--outform PEM|DER**
     Output file format.  PEM is textual format, DER is binary.  Default: PEM.
 
-**--days NUM**
-    Set period that this CRL is valid.
+Options for signing:
+
+**--ca-info CRT_FILE**
+    CA certificate used for signing.
 
 **--ca-key KEY_FILE**
     CA private key file.  Can be PGP-encrypted.  Can be password-protected.
 
-**--ca-info CRT_FILE**
-    CA certificate used for signing.
+**--password-file FN**
+    Password file for CA private key.  Can be PGP-encrypted.
+
+Options for CRL itself:
+
+**--crl FN**
+    Load existing file.  Version numbers are reused unless overrided on command line.
 
 **--crl-number VER**
     Version number for main CRL.
@@ -442,6 +478,9 @@ Options for CRL itself:
 
     Extension: CRLIssuingDistributionPoint_.
 
+**--crl-reasons REASONS**
+    Limit CRL scope to only list of reasons.
+
 **--indirect-crl**
     CRL list can contain revoked certificates not issued by CRL signer.
 
@@ -451,6 +490,20 @@ Options for CRL itself:
     Override issuer URLs.  Default: taken from signer certificate.
 
     Extension: CRLAuthorityInformationAccess_.
+
+**--delta-crl-urls URLS**
+    Set urls for Delta CRL Distribution Point.
+
+    Extension: FreshestCRL_.
+
+**--last-update DATE**
+    Set update time explicitly instead using current timestamp.
+
+**--next-update DATE**
+    Set next update time explicitly instead using **--days**.
+
+**--days NUM**
+    Set period that this CRL is valid.
 
 Options for adding entries:
 
@@ -491,6 +544,9 @@ Options for adding entries:
     revocation date is used.
 
     Extension: CRLInvalidityDate_.
+
+**--revocation-date DATE**
+    Use DATE instead current timestamp.
 
 show
 ~~~~
@@ -693,3 +749,4 @@ actually used.
 .. _PolicyConstraints: https://tools.ietf.org/html/rfc5280#section-4.2.1.11
 .. _CertificatePolicies: https://tools.ietf.org/html/rfc5280#section-4.2.1.4
 .. _critical: https://tools.ietf.org/html/rfc5280#section-4.2
+.. _FreshestCRL: https://datatracker.ietf.org/doc/html/rfc5280#section-5.2.6
