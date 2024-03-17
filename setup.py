@@ -25,7 +25,7 @@ setup(
     },
     package_data={"sysca": ["py.typed"]},
     zip_safe=True,
-    #install_requires=["cryptography>=3.1"],
+    install_requires=["cryptography>=3.1"],
     keywords=["x509", "tls", "ssl", "certificate", "authority", "command-line", "server", "authentication"],
     classifiers=[
         "Development Status :: 5 - Production/Stable",
