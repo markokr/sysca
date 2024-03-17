@@ -618,6 +618,36 @@ class CertInfo:
         # configured builder
         return builder
 
+    def combine(self, other: "CertInfo") -> "CertInfo":
+        """Return new CertInfo combining fields from self and other.
+
+        Attributes from self will be preferred.
+        """
+        def merge_number(a: Optional[int], b: Optional[int]) -> Optional[int]:
+            return a if a is not None else b
+
+        return CertInfo(
+            subject=self.subject or other.subject,
+            alt_names=self.san or other.san,
+            ca=self.ca or other.ca,
+            path_length=merge_number(self.path_length, other.path_length),
+            usage=self.usage or other.usage,
+            ocsp_urls=self.ocsp_urls or other.ocsp_urls,
+            crl_urls=self.crl_urls or other.crl_urls,
+            issuer_urls=self.issuer_urls or other.issuer_urls,
+            delta_crl_urls=self.delta_crl_urls or other.delta_crl_urls,
+            ocsp_nocheck=self.ocsp_nocheck or other.ocsp_nocheck,
+            ocsp_must_staple=self.ocsp_must_staple or other.ocsp_must_staple,
+            ocsp_must_staple_v2=self.ocsp_must_staple_v2 or other.ocsp_must_staple_v2,
+            permit_subtrees=self.permit_subtrees or other.permit_subtrees,
+            exclude_subtrees=self.exclude_subtrees or other.exclude_subtrees,
+            inhibit_any=merge_number(self.inhibit_any, other.inhibit_any),
+            require_explicit_policy=merge_number(self.require_explicit_policy, other.require_explicit_policy),
+            inhibit_policy_mapping=merge_number(self.inhibit_policy_mapping, other.inhibit_policy_mapping),
+            certificate_policies=self.certificate_policies or other.certificate_policies,
+            rsa_pss=self.rsa_pss or other.rsa_pss,
+        )
+
     def show(self, writeln: Callable[[str], None]) -> None:
         """Print out details.
         """

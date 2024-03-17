@@ -133,7 +133,7 @@ def info_from_args(args: argparse.Namespace) -> CertInfo:
     """Collect command-line arguments into CertInfo.
     """
     return CertInfo(
-        subject=parse_dn(args.subject),
+        subject=parse_dn(args.subject) if args.subject else None,
         usage=parse_list(args.usage),
         alt_names=parse_list(args.san),
         ocsp_nocheck=args.ocsp_nocheck,
@@ -172,7 +172,8 @@ def do_sign(subject_csr: x509.CertificateSigningRequest,
             days: Optional[int],
             path_length: Optional[int],
             reqInfo: Optional[str],
-            reset_info: Optional[CertInfo] = None,
+            extra_info: Optional[CertInfo] = None,
+            reset: bool = False,
             not_valid_before: Optional[datetime] = None,
             not_valid_after: Optional[datetime] = None,
             serial_number: Optional[int] = None,
@@ -186,10 +187,12 @@ def do_sign(subject_csr: x509.CertificateSigningRequest,
     # Load CA info
     issuer_info = CertInfo(load=issuer_obj)
 
-    # Load certificate request
+    # Load info from certificate request
     subject_info = CertInfo(load=subject_csr)
-    if reset_info:
-        subject_info = reset_info
+    if reset and extra_info:
+        subject_info = extra_info
+    elif extra_info:
+        subject_info = extra_info.combine(subject_info)
 
     # Report
     pkey = subject_csr.public_key()
@@ -238,9 +241,7 @@ def sign_command(args: argparse.Namespace) -> None:
     # Load certificate request
     subject_csr = load_req(args.request)
 
-    reset_info = None
-    if args.reset:
-        reset_info = info_from_args(args)
+    extra_info = info_from_args(args)
 
     # Load CA info
     issuer_obj: Union[x509.Certificate, x509.CertificateSigningRequest]
@@ -263,7 +264,9 @@ def sign_command(args: argparse.Namespace) -> None:
                    not_valid_before=args.not_valid_before,
                    not_valid_after=args.not_valid_after,
                    serial_number=args.serial_number,
-                   days=args.days, reset_info=reset_info)
+                   days=args.days,
+                   reset=args.reset,
+                   extra_info=extra_info)
 
     # Write certificate
     do_output(cert, args)
