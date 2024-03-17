@@ -19,11 +19,11 @@ jobs:
       fail-fast: false
       matrix:
         pick:
-          - {OS: "ubuntu-latest", ARCH: "x64", PY: "3.8", CRYPTO: "30"}
-          - {OS: "ubuntu-latest", ARCH: "x64", PY: "3.8", CRYPTO: "35"}
-          - {OS: "ubuntu-latest", ARCH: "x64", PY: "3.9", CRYPTO: "37"}
-          - {OS: "ubuntu-latest", ARCH: "x64", PY: "3.10", CRYPTO: "38"}
+          - {OS: "ubuntu-latest", ARCH: "x64", PY: "3.8", CRYPTO: "31"}
+          - {OS: "ubuntu-latest", ARCH: "x64", PY: "3.9", CRYPTO: "32"}
+          - {OS: "ubuntu-latest", ARCH: "x64", PY: "3.10", CRYPTO: "34"}
           - {OS: "ubuntu-latest", ARCH: "x64", PY: "3.11", CRYPTO: "40"}
+          - {OS: "ubuntu-latest", ARCH: "x64", PY: "3.12", CRYPTO: "41"}
           - {OS: "ubuntu-latest", ARCH: "x64", PY: "3.12", CRYPTO: "42"}
           - {OS: "windows-latest", ARCH: "x86", PY: "3.12", CRYPTO: "42"}
           - {OS: "windows-latest", ARCH: "x64", PY: "3.12", CRYPTO: "42"}
