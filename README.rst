@@ -39,8 +39,8 @@ Create certificate signing request::
     sysca request --key KEY_FILE [--password-file TXT_FILE]
                   [--subject DN] [--san ALTNAMES]
                   [--CA] [--path-length DEPTH]
-                  [--usage FLAGS] [--ocsp-url URLS] [--crl-url URLS]
-                  [--issuer-cert-url URLS]
+                  [--usage FLAGS] [--ocsp-urls URLS] [--crl-urls URLS]
+                  [--issuer-urls URLS]
                   [--out CSR_FN]
 
 Create selfsigned certificate::
@@ -48,8 +48,8 @@ Create selfsigned certificate::
     sysca selfsign --key KEY_FILE --days N [--password-file TXT_FILE]
                   [--subject DN] [--san ALTNAMES]
                   [--CA] [--path-length DEPTH]
-                  [--usage FLAGS] [--ocsp-url URLS] [--crl-url URLS]
-                  [--issuer-cert-url URLS]
+                  [--usage FLAGS] [--ocsp-urls URLS] [--crl-urls URLS]
+                  [--issuer-urls URLS]
                   [--out CRT_FN]
 
 Sign certificate signing request::
@@ -57,7 +57,10 @@ Sign certificate signing request::
     sysca sign --ca-key KEY_FILE --ca-info CRT_FILE
                --request CSR_FILE --days NUM
                [--out CRT_FN] [--password-file TXT_FILE]
-               [--reset ...]
+               [--reset] [--subject DN] [--san ALTNAMES]
+               [--CA] [--path-length DEPTH]
+               [--usage FLAGS] [--ocsp-urls URLS] [--crl-urls URLS]
+               [--issuer-urls URLS]
 
 Create or update CRL file::
 
@@ -241,17 +244,17 @@ Options useful only when apps support them:
 
     Extension: OCSPMustStapleV2_.
 
-**--crl-url URLS**
+**--crl-urls URLS**
     List of URLs where certificate revocation lists can be downloaded.
 
     Extension: CRLDistributionPoints_.
 
-**--ocsp-url URLS**
+**--ocsp-urls URLS**
     List of URL for OCSP endpoint where validity can be checked.
 
     Extension: AuthorityInformationAccess_.
 
-**--issuer-url URLS**
+**--issuer-urls URLS**
     List of URLS where parent certificate can be downloaded,
     in case the parent CA is not root CA.  Usually sub-CA certificates
     should be provided during key-agreement (TLS).  This setting
@@ -320,12 +323,14 @@ Options useful only when apps support them:
     Extension: CertificatePolicies_.
 
 **--rsa-pss**
-    Use RSA-PSS padding when signing with RSA key.
+    Use RSA-PSS padding when signing with RSA key.  Note that this setting will
+    be inherited - certificate will be signed with RSA-PSS if either this flag
+    is given, CA certificate uses RSA-PSS or CSR uses RSA-PSS.
 
 sign
 ~~~~
 
-Create signed certificate based on data in request.
+Create signed certificate based on data in certificate request.
 Any unsupported extensions in request will cause error.
 
 It will add SubjectKeyIdentifier_ and AuthorityKeyIdentifier_
@@ -361,7 +366,7 @@ Options:
 
 **--reset**
     Do not use any info fields from CSR, reload all info from command line.
-    Without it, all info from CSR is kept and command line is ignored.
+    Without it, command line arguments override corresponding fields from CSR.
 
 selfsign
 ~~~~~~~~
