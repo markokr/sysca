@@ -1,6 +1,15 @@
 Version history
 ===============
 
+2.3
+---
+
+* [feature] Support RSA-PSS with **--rsa-pss** command line argument.
+  Requires cryptography 42+.
+* [feature] sign: support partial field overwrite when **--reset** is not given.
+* [cleanup] Add full typing to all code.
+* [cleanup] Drop support for cryptography < 3.1 - stop use of ``default_backend()``.
+
 2.2
 ---
 
